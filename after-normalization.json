@@ -1,0 +1,7 @@
+// This is a log snippet after being normalized.
+
+{
+  "emailAddress": "jasmine@example",
+  "actor.detailEntry": null,
+  "actor.displayName": "Jasmine Smith",
+}
