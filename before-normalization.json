@@ -1,0 +1,7 @@
+// This is a log snippet prior to being normalized.
+
+{
+  "actor.alternateId": "jasmine@example",
+  "actor.detailEntry": null,
+  "actor.displayName": "Jane Smith",
+}
