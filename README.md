@@ -45,3 +45,4 @@ For more resources and updates:
 - [Monad Blog](https://www.monad.com/blog)
 - [Contact Us](mailto:support@monad.com)
 
+- Windows users: see [Monad WSL Quickstart](docs/monad-wsl-quickstart.md)
