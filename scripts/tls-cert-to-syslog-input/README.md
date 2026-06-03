@@ -1,6 +1,6 @@
 # tls-cert-to-syslog-input
 
-`monad-tls-cert-to-pipeline.sh`
+`tls-cert-to-syslog-input.sh`
 
 ## Purpose
 
@@ -42,19 +42,19 @@ appear in the process list.
 
 ```bash
 export MONAD_API_KEY='...'
-./monad-tls-cert-to-pipeline.sh -f devices.txt -p <pipeline_id>
+./tls-cert-to-syslog-input.sh -f devices.txt -p <pipeline_id>
 ```
 
 Preview without writing:
 
 ```bash
-./monad-tls-cert-to-pipeline.sh -f devices.txt -p <pipeline_id> --dry-run
+./tls-cert-to-syslog-input.sh -f devices.txt -p <pipeline_id> --dry-run
 ```
 
 Bulk-load precomputed fingerprints (skip the TLS probe):
 
 ```bash
-./monad-tls-cert-to-pipeline.sh --hashes-file fingerprints.txt -p <pipeline_id>
+./tls-cert-to-syslog-input.sh --hashes-file fingerprints.txt -p <pipeline_id>
 ```
 
 | Flag | Required | Description |

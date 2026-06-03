@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# monad-tls-cert-to-pipeline.sh
+# tls-cert-to-syslog-input.sh
 #
 # Registers device TLS-certificate SHA-256 fingerprints on a Monad pipeline's
 # Syslog input, so that sources which CANNOT use SNI can still be routed to the
@@ -29,7 +29,7 @@
 #
 # ---------------------------------------------------------------------------
 # Usage:
-#   monad-tls-cert-to-pipeline.sh -f <ip_file> -p <pipeline_id> [-k <api_key>] [options]
+#   tls-cert-to-syslog-input.sh -f <ip_file> -p <pipeline_id> [-k <api_key>] [options]
 #
 # Input (at least one of):
 #   -f, --file            Input file (one IP, host, or host:port per line); each
@@ -65,7 +65,7 @@
 #
 # Example:
 #   export MONAD_API_KEY='...'
-#   ./monad-tls-cert-to-pipeline.sh -f devices.txt -p <pipeline_id>
+#   ./tls-cert-to-syslog-input.sh -f devices.txt -p <pipeline_id>
 # ---------------------------------------------------------------------------
 
 set -uo pipefail
@@ -109,7 +109,7 @@ Example (devices.txt):
   switch01.corp.example.com
 
 Then re-run, e.g.:
-  ./monad-tls-cert-to-pipeline.sh -f devices.txt -p <pipeline_id>
+  ./tls-cert-to-syslog-input.sh -f devices.txt -p <pipeline_id>
 
 If the file exists but this message mentions permissions, make it readable:
   chmod +r devices.txt
@@ -133,7 +133,7 @@ Example (fingerprints.txt):
   d07b43fd8d3d7aacb95750667417cc81264b60089c72df1a7b0a1862dc791d96
 
 Then re-run, e.g.:
-  ./monad-tls-cert-to-pipeline.sh --hashes-file fingerprints.txt -p <pipeline_id>
+  ./tls-cert-to-syslog-input.sh --hashes-file fingerprints.txt -p <pipeline_id>
 
 If the file exists but this message mentions permissions, make it readable:
   chmod +r fingerprints.txt
