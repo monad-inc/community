@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-#
 # tls-cert-to-syslog-input.sh
 #
 # Registers device TLS-certificate SHA-256 fingerprints on a Monad pipeline's
@@ -100,7 +99,9 @@ DRY_RUN=0
 SYSLOG_SUBTYPE="monad-syslog"
 PROG="$(basename "$0")"
 
-usage() { sed -n '16,/^# ----/p' "$0" | sed 's/^# \{0,1\}//; s/^#//'; }
+# --help prints the doc block above: from the first blank line (end of the
+# license header) up to the first line of code, with comment markers stripped.
+usage() { awk '!/^(#|$)/{exit} /^$/{f=1} f' "$0" | sed 's/^# \{0,1\}//; s/^#//'; }
 die()   { echo "$PROG: error: $*" >&2; exit 1; }
 
 # Printed whenever the --file IP list can't be read, so the user knows the

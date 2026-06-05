@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-#
 # <script-name>.sh
 #
 # <One-line summary of what this script does.>
@@ -41,7 +40,9 @@ API_KEY="${MONAD_API_KEY:-}"
 BASE_URL="https://app.monad.com/api"
 PROG="$(basename "$0")"
 
-usage() { sed -n '16,/^# ----/p' "$0" | sed 's/^# \{0,1\}//; s/^#//'; }
+# --help prints the doc block above: from the first blank line (end of the
+# license header) up to the first line of code, with comment markers stripped.
+usage() { awk '!/^(#|$)/{exit} /^$/{f=1} f' "$0" | sed 's/^# \{0,1\}//; s/^#//'; }
 die()   { echo "$PROG: error: $*" >&2; exit 1; }
 
 # ---- arg parsing -----------------------------------------------------------
