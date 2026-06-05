@@ -1,4 +1,18 @@
 #!/usr/bin/env bash
+# Copyright 2026 Monad, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 #
 # <script-name>.sh
 #
@@ -27,7 +41,7 @@ API_KEY="${MONAD_API_KEY:-}"
 BASE_URL="https://app.monad.com/api"
 PROG="$(basename "$0")"
 
-usage() { sed -n '2,/^# ----/p' "$0" | sed 's/^# \{0,1\}//; s/^#//'; }
+usage() { sed -n '16,/^# ----/p' "$0" | sed 's/^# \{0,1\}//; s/^#//'; }
 die()   { echo "$PROG: error: $*" >&2; exit 1; }
 
 # ---- arg parsing -----------------------------------------------------------
