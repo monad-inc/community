@@ -6,6 +6,13 @@ Export an entire Monad **organization** to a self-contained Terraform module,
 then either migrate it to another instance or commit it to Git for backup and
 version control.
 
+Two interchangeable implementations are provided — pick whichever fits your
+environment; they produce the same Terraform module and support the same
+commands:
+
+- **`monad-org-export.py`** — Python 3, standard library only (no `pip install`).
+- **`monad-org-export.sh`** — Bash, using `curl` + `jq`.
+
 Monad's [Terraform provider](https://registry.terraform.io/providers/monad-inc/monad/latest)
 can manage every resource type in an org, but it has **no data sources** — so on
 its own it cannot discover "everything in my org." This tool closes that gap: it
@@ -33,11 +40,17 @@ target:
 
 ## Requirements
 
-- Interpreter: `python` 3.8+ (standard library only — no `pip install`).
-- Tools: [`terraform`](https://developer.hashicorp.com/terraform) **1.5+** (for
-  `apply`, and required by `--emit-imports`); `git` (for `push`). Neither is
-  needed for `export` itself.
-- Platform notes: macOS/Linux. No third-party Python packages.
+- **Python version (`monad-org-export.py`):** `python` 3.8+, standard library
+  only — no third-party packages.
+- **Bash version (`monad-org-export.sh`):** `bash` 3.2+ (macOS default), plus
+  [`curl`](https://curl.se/) and [`jq`](https://jqlang.github.io/jq/).
+- Both: [`terraform`](https://developer.hashicorp.com/terraform) **1.5+** is
+  needed for `apply` (and required by `--emit-imports`); `git` is needed for
+  `push`. Neither is needed for `export` itself.
+- Platform notes: macOS/Linux.
+
+Examples below use the Python entrypoint; substitute `./monad-org-export.sh` for
+the Bash version — the subcommands, flags, and output are identical.
 
 ## Authentication
 
@@ -112,10 +125,13 @@ apply** — import blocks are one-time.
   values, so the module contains secret *definitions* only: each becomes a
   `monad_secret` whose `value` is a sensitive Terraform variable, with a stub in
   `terraform.tfvars.example`. You must supply each value before `apply`.
-- **Secret references inside connector config are remapped best-effort.** Where a
-  connector's `config.secrets` value contains a known exported secret id, it is
-  rewritten to `monad_secret.<name>.reference`. Unrecognized references are
-  emitted literally and flagged in `EXPORT_NOTES.md` for manual remapping.
+- **Secret references inside connector config.** The Python version remaps them
+  best-effort: where a connector's `config.secrets` value contains a known
+  exported secret id, it is rewritten to `monad_secret.<name>.reference`
+  (unrecognized references are emitted literally and flagged in
+  `EXPORT_NOTES.md`). The Bash version emits `config.secrets` verbatim; if you
+  migrate to a different instance, remap those references to
+  `monad_secret.<name>.reference` by hand.
 - **`--emit-imports` requires the resource ids to exist on the target.** It is
   for adopting the *same* org in place, not for cross-instance migration (a
   different instance has different ids). Imported `monad_secret` resources may
