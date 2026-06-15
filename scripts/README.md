@@ -9,6 +9,7 @@ its usage and limitations.
 | Script | Purpose | Language | Monad API surface | Category | Docs |
 |---|---|---|---|---|---|
 | [`tls-cert-to-syslog-input`](tls-cert-to-syslog-input/) | Register device TLS-certificate SHA-256 fingerprints on a pipeline's Syslog input so SNI-less sources route correctly | Bash | `GET /v1/organizations`, `GET /v2/{org}/pipelines/{id}`, `GET /v1/{org}/inputs/{id}`, `PATCH /v2/{org}/inputs/{id}` | Inputs / routing | [README](tls-cert-to-syslog-input/README.md) |
+| [`monad-org-export`](monad-org-export/) | Export an entire organization to a Terraform module, then migrate it between instances (SaaS ↔ self-hosted) or back it up to Git | Python / Bash | `GET /v1/{org}/inputs\|outputs\|transforms`, `GET /v3/{org}/enrichments`, `GET /v2/{org}/secrets\|pipelines` | Migration / backup | [README](monad-org-export/README.md) |
 
 ## Layout
 
