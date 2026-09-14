@@ -22,6 +22,8 @@ Subcommands:
   export   read SOURCE org -> write a Terraform module to a directory
   apply    run `terraform apply` against a TARGET org using that module
   push     commit the module to a Git remote (backup / version control)
+  verify   compare a TARGET org against the export's MANIFEST.json and list
+           anything that did not make it across
 
 Run `monad-org-export.py <subcommand> --help` for details.
 """
@@ -37,6 +39,9 @@ import urllib.request
 from pathlib import Path
 
 PROVIDER_SOURCE = "monad-inc/monad"
+# The HCL this tool emits (scalar edge `value`, `values` lists, `monad_alert_rule`,
+# structured `{ id = ... }` secret references) matches the provider from 0.4.1 on.
+PROVIDER_MIN_VERSION = "0.4.1"
 DEFAULT_BASE_URL = "https://app.monad.com"
 
 # REST paths per resource type. Monad serves a deliberate mix of API versions
@@ -51,6 +56,16 @@ RESOURCE_KINDS = [
     ("v1", "outputs", "outputs", "monad_output"),
     ("v3", "enrichments", "enrichments", "monad_enrichment"),
 ]
+TRANSFORM_KIND = ("v1", "transforms", "transforms", "monad_transform")
+ALERT_RULE_KIND = ("v3", "alert_rules", "alert_rules", "monad_alert_rule")
+# pipeline node component_type -> (api_version, path_segment) for fetching a
+# component the list endpoints did not return (e.g. a system-managed one).
+COMPONENT_TYPE_PATHS = {
+    "input": ("v1", "inputs"),
+    "output": ("v1", "outputs"),
+    "transform": ("v1", "transforms"),
+    "enrichment": ("v3", "enrichments"),
+}
 
 # ---------------------------------------------------------------------------
 # API client
@@ -100,10 +115,15 @@ class Client:
                 break
             items = d.get(envelope_key) or _first_list(d)
             out.extend(items)
+            if not items:
+                break
             pg = d.get("pagination") or {}
             total = pg.get("total")
-            offset += limit
-            if total is None or offset >= total or not items:
+            # Advance by what the server actually returned, not by what we asked
+            # for: a server that clamps `limit` would otherwise make us skip a
+            # window of resources on every page.
+            offset += len(items)
+            if total is not None and offset >= total:
                 break
         return out
 
@@ -194,7 +214,7 @@ def build_config_block(config, secret_ref_map, warnings, ctx_label):
     secrets = config.get("secrets") or {}
     lines = []
     if settings:
-        lines.append(f"    settings = {hcl_value(settings, 2)}")
+        lines.append(f"    settings = {hcl_value(remap_secret_ids(settings, secret_ref_map), 2)}")
     if secrets:
         remapped = _remap_secret_refs(secrets, secret_ref_map, warnings, ctx_label)
         lines.append(f"    secrets = {hcl_value(remapped, 2)}")
@@ -204,27 +224,44 @@ def build_config_block(config, secret_ref_map, warnings, ctx_label):
 
 
 def _remap_secret_refs(secrets, secret_ref_map, warnings, ctx_label):
-    """config.secrets values embed an org-specific secret id/reference. Where a
-    value contains a known source secret id, rewrite it to a Terraform reference
-    so it resolves against the recreated secret on the target."""
-    out = {}
-    for slot, val in secrets.items():
-        if isinstance(val, str):
-            for sid, addr in secret_ref_map.items():
-                if sid and sid in val:
-                    out[slot] = Raw(f"{addr}.reference")
-                    break
-            else:
-                out[slot] = val
-                if val:
-                    warnings.append(
-                        f"{ctx_label}: secret slot '{slot}' could not be matched to an "
-                        f"exported secret; its value is emitted literally and may need "
-                        f"manual remapping on the target."
-                    )
-        else:
-            out[slot] = val
+    """config.secrets slots reference an org-specific secret as `{"id": "<uuid>"}`
+    (the API never returns the value). Rewrite each known id to a Terraform
+    reference so it resolves against the recreated secret on the target, and
+    flag slots that point at a secret this export did not see."""
+    out = remap_secret_ids(secrets, secret_ref_map)
+    for slot, val in (out or {}).items():
+        sid = val.get("id") if isinstance(val, dict) else val
+        if isinstance(sid, str) and sid and not isinstance(sid, Raw) and _looks_like_uuid(sid):
+            warnings.append(
+                f"{ctx_label}: secret slot '{slot}' references secret {sid}, which is "
+                f"not in this export (deleted, or owned by another org). The literal "
+                f"id is emitted and will NOT resolve on a different instance."
+            )
     return out
+
+
+_UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
+
+
+def _looks_like_uuid(s):
+    return bool(_UUID_RE.match(s or ""))
+
+
+def remap_secret_ids(value, secret_ref_map):
+    """Deep-walk any JSON value and replace every string that IS a known source
+    secret id with a `monad_secret.<name>.id` reference. Covers `{id: ...}`
+    references in connector `config.secrets`, and the secret ids that transform
+    operations such as `mask`/`encrypt` embed inside their `config`."""
+    if isinstance(value, Raw):
+        return value
+    if isinstance(value, str):
+        addr = secret_ref_map.get(value)
+        return Raw(f"{addr}.id") if addr else value
+    if isinstance(value, list):
+        return [remap_secret_ids(v, secret_ref_map) for v in value]
+    if isinstance(value, dict):
+        return {k: remap_secret_ids(v, secret_ref_map) for k, v in value.items()}
+    return value
 
 
 def export(args):
@@ -252,8 +289,10 @@ def export(args):
         manifest["resources"][s["id"]] = {"address": addr, "name": s.get("name"), "type": "secret"}
         var = f"secret_{local}"
         block = [f'resource "monad_secret" "{local}" {{']
-        block.append(f"  name  = {hcl_string(s.get('name') or local)}")
-        block.append(f"  value = var.{var}")
+        block.append(f"  name        = {hcl_string(s.get('name') or local)}")
+        if s.get("description"):
+            block.append(f"  description = {hcl_string(s['description'])}")
+        block.append(f"  value       = var.{var}")
         block.append("}")
         secret_blocks.append("\n".join(block))
         secret_vars.append(
@@ -275,23 +314,9 @@ def export(args):
         for it in items:
             if args.customer_only and it.get("managed_by") not in (None, "customer"):
                 continue
-            local = sanitize_name(it.get("name"), used_names)
-            addr = f"{tf_type}.{local}"
-            id_to_addr[it["id"]] = addr
-            manifest["resources"][it["id"]] = {
-                "address": addr, "name": it.get("name"), "type": tf_type,
-                "connector_type": it.get("type"),
-            }
-            block = [f'resource "{tf_type}" "{local}" {{']
-            block.append(f"  name        = {hcl_string(it.get('name') or local)}")
-            if it.get("description"):
-                block.append(f"  description = {hcl_string(it['description'])}")
-            block.append(f"  type        = {hcl_string(it.get('type') or '')}")
-            cfg = build_config_block(it.get("config"), secret_ref_map, warnings, addr)
-            if cfg:
-                block.append(cfg)
-            block.append("}")
-            component_blocks[tf_type].append("\n".join(block))
+            component_blocks[tf_type].append(
+                render_component(it, tf_type, id_to_addr, secret_ref_map, used_names, warnings, manifest)
+            )
 
     # ---- transforms (distinct schema: required dynamic `config`, no `type`)
     print("Fetching transforms ...", file=sys.stderr)
@@ -304,31 +329,111 @@ def export(args):
     for it in transforms:
         if args.customer_only and it.get("managed_by") not in (None, "customer"):
             continue
-        local = sanitize_name(it.get("name"), used_names)
-        addr = f"monad_transform.{local}"
-        id_to_addr[it["id"]] = addr
-        manifest["resources"][it["id"]] = {"address": addr, "name": it.get("name"), "type": "monad_transform"}
-        block = [f'resource "monad_transform" "{local}" {{']
-        block.append(f"  name        = {hcl_string(it.get('name') or local)}")
-        if it.get("description"):
-            block.append(f"  description = {hcl_string(it['description'])}")
-        block.append(f"  config = {hcl_value(it.get('config') or {}, 1)}")
-        block.append("}")
-        transform_blocks.append("\n".join(block))
+        transform_blocks.append(
+            render_transform(it, id_to_addr, secret_ref_map, used_names, warnings, manifest)
+        )
+
+    # A pipeline node may reference a component the list endpoints did not
+    # return (the API hides `internal`-managed components, and a listing can
+    # race a concurrent create). Rather than emit a literal id that can never
+    # resolve on another instance, fetch the component by id and export it too.
+    def resolve_component(node, pipeline_name):
+        cid, ctype = node.get("component_id"), node.get("component_type")
+        if not cid or cid in id_to_addr:
+            return
+        ver_seg = COMPONENT_TYPE_PATHS.get(ctype)
+        if not ver_seg:
+            warnings.append(
+                f"pipeline '{pipeline_name}': node '{node.get('slug')}' has unknown "
+                f"component_type '{ctype}'; the literal component id is emitted."
+            )
+            return
+        try:
+            it = client.get(ver_seg[0], ver_seg[1], cid)
+        except MonadAPIError as e:
+            warnings.append(
+                f"pipeline '{pipeline_name}': node '{node.get('slug')}' references "
+                f"{ctype} {cid}, which the list endpoint did not return and GET failed "
+                f"({e}). The literal id is emitted and will not resolve elsewhere."
+            )
+            return
+        if it.get("managed_by") not in (None, "customer"):
+            warnings.append(
+                f"pipeline '{pipeline_name}': node '{node.get('slug')}' references "
+                f"{ctype} '{it.get('name')}' ({cid}) managed_by={it.get('managed_by')}, "
+                f"which is not listed to customers. It is exported so the pipeline can "
+                f"be recreated, but the target may reject creating it."
+            )
+        if ctype == "transform":
+            transform_blocks.append(
+                render_transform(it, id_to_addr, secret_ref_map, used_names, warnings, manifest)
+            )
+        else:
+            tf_type = {"input": "monad_input", "output": "monad_output", "enrichment": "monad_enrichment"}[ctype]
+            component_blocks[tf_type].append(
+                render_component(it, tf_type, id_to_addr, secret_ref_map, used_names, warnings, manifest)
+            )
 
     # ---- pipelines (need per-pipeline GET for nodes/edges)
     print("Fetching pipelines ...", file=sys.stderr)
     pipeline_blocks = []
     pipelines = client.list("v2", "pipelines", "pipelines")
+    pipeline_stats = {"schema_detection_enabled": 0, "disabled_edges": 0}
     for p in pipelines:
+        if args.customer_only and p.get("managed_by") not in (None, "customer"):
+            continue
         full = client.get("v2", "pipelines", p["id"])
-        block = render_pipeline(full, id_to_addr, used_names, warnings, manifest)
+        for n in full.get("nodes") or []:
+            resolve_component(n, full.get("name") or p.get("name"))
+        block = render_pipeline(full, id_to_addr, used_names, warnings, manifest,
+                                force_disabled=args.pipelines_disabled, stats=pipeline_stats)
         if block:
             pipeline_blocks.append(block)
+    if pipeline_stats["schema_detection_enabled"]:
+        warnings.append(
+            f"{pipeline_stats['schema_detection_enabled']} edge(s) have schema drift "
+            f"detection enabled on the source. The Terraform provider cannot express "
+            f"`schema_detection_spec`, so on the target these edges start with detection "
+            f"disabled; re-enable it after the first apply (PATCH "
+            f"/v2/{{org}}/pipelines/{{id}}/edges/{{edge_id}})."
+        )
+    if pipeline_stats["disabled_edges"]:
+        warnings.append(
+            f"{pipeline_stats['disabled_edges']} edge(s) are disabled on the source. The "
+            f"provider has no `disabled` attribute, so they are created enabled."
+        )
+    if args.pipelines_disabled:
+        warnings.append(
+            "All pipelines are emitted with `enabled = false` (--pipelines-disabled). "
+            "Enable them on the target once the secret values are in place."
+        )
+
+    # ---- alert rules (customer-managed only; the org-seeded system rules such
+    # as "Schema Drift Detection" and "Pipeline Throttled" already exist on any
+    # target org and must not be duplicated)
+    print("Fetching alert rules ...", file=sys.stderr)
+    alert_rule_blocks = []
+    try:
+        rules = client.list(*ALERT_RULE_KIND[:3])
+    except MonadAPIError as e:
+        warnings.append(f"Could not list alert_rules: {e}")
+        rules = []
+    skipped_system = 0
+    for r in rules:
+        if r.get("managed_by") not in (None, "customer"):
+            skipped_system += 1
+            continue
+        alert_rule_blocks.append(render_alert_rule(r, id_to_addr, manifest, used_names, warnings))
+    if skipped_system:
+        warnings.append(
+            f"Skipped {skipped_system} system-managed alert rule(s); every org already "
+            f"has them, so exporting them would create duplicates."
+        )
 
     write_module(
         outdir, args, secret_blocks, secret_vars, secret_tfvars,
-        component_blocks, transform_blocks, pipeline_blocks, manifest, warnings,
+        component_blocks, transform_blocks, pipeline_blocks, alert_rule_blocks,
+        manifest, warnings,
     )
 
     print(f"\nExported to {outdir}/", file=sys.stderr)
@@ -337,16 +442,138 @@ def export(args):
         print(f"  {seg:10} {len(component_blocks[tf])}", file=sys.stderr)
     print(f"  transforms: {len(transform_blocks)}", file=sys.stderr)
     print(f"  pipelines:  {len(pipeline_blocks)}", file=sys.stderr)
+    print(f"  alert rules: {len(alert_rule_blocks)}", file=sys.stderr)
     if warnings:
         print(f"\n{len(warnings)} warning(s) — see {outdir}/EXPORT_NOTES.md", file=sys.stderr)
 
 
-def render_pipeline(p, id_to_addr, used_names, warnings, manifest):
+def _warn_version(it, addr, warnings):
+    # The provider has no `version` attribute, so the target always creates the
+    # connector type's current default version. Flag anything that isn't v1.
+    v = it.get("version")
+    if v not in (None, 0, 1, "1"):
+        warnings.append(
+            f"{addr}: source runs connector version {v} of type '{it.get('type')}'. "
+            f"The provider cannot pin a connector version, so the target gets the "
+            f"type's default version; check the settings still apply."
+        )
+
+
+def render_component(it, tf_type, id_to_addr, secret_ref_map, used_names, warnings, manifest):
+    local = sanitize_name(it.get("name"), used_names)
+    addr = f"{tf_type}.{local}"
+    id_to_addr[it["id"]] = addr
+    manifest["resources"][it["id"]] = {
+        "address": addr, "name": it.get("name"), "type": tf_type,
+        "connector_type": it.get("type"),
+    }
+    _warn_version(it, addr, warnings)
+    block = [f'resource "{tf_type}" "{local}" {{']
+    block.append(f"  name        = {hcl_string(it.get('name') or local)}")
+    if it.get("description"):
+        block.append(f"  description = {hcl_string(it['description'])}")
+    block.append(f"  type        = {hcl_string(it.get('type') or '')}")
+    cfg = build_config_block(it.get("config"), secret_ref_map, warnings, addr)
+    if cfg:
+        block.append(cfg)
+    block.append("}")
+    return "\n".join(block)
+
+
+def render_transform(it, id_to_addr, secret_ref_map, used_names, warnings, manifest):
+    local = sanitize_name(it.get("name"), used_names)
+    addr = f"monad_transform.{local}"
+    id_to_addr[it["id"]] = addr
+    manifest["resources"][it["id"]] = {"address": addr, "name": it.get("name"), "type": "monad_transform"}
+    block = [f'resource "monad_transform" "{local}" {{']
+    block.append(f"  name        = {hcl_string(it.get('name') or local)}")
+    if it.get("description"):
+        block.append(f"  description = {hcl_string(it['description'])}")
+    # mask/encrypt operations embed the secret id inside the operation config;
+    # remap those so the transform is created against the target's secret.
+    config = remap_secret_ids(it.get("config") or {}, secret_ref_map)
+    block.append(f"  config = {hcl_value(config, 1)}")
+    block.append("}")
+    return "\n".join(block)
+
+
+def render_alert_rule(r, id_to_addr, manifest, used_names, warnings):
+    local = sanitize_name(r.get("name"), used_names)
+    addr = f"monad_alert_rule.{local}"
+    manifest["resources"][r["id"]] = {"address": addr, "name": r.get("name"), "type": "monad_alert_rule"}
+    block = [f'resource "monad_alert_rule" "{local}" {{']
+    block.append(f"  name        = {hcl_string(r.get('name') or local)}")
+    if r.get("description"):
+        block.append(f"  description = {hcl_string(r['description'])}")
+    block.append(f"  type        = {hcl_string(r.get('type') or '')}")
+    block.append(f"  severity    = {hcl_string(r.get('severity') or 'medium')}")
+    block.append(f"  active      = {'true' if r.get('active', True) else 'false'}")
+    pids = r.get("pipeline_ids") or []
+    if pids:
+        refs = []
+        for pid in pids:
+            ref = id_to_addr.get(pid)
+            if ref:
+                refs.append(Raw(f"{ref}.id"))
+            else:
+                refs.append(pid)
+                warnings.append(
+                    f"{addr}: watches pipeline {pid}, which is not in this export; the "
+                    f"literal id is emitted and will not resolve on a different instance."
+                )
+        block.append(f"  pipeline_ids = {hcl_value(refs, 1)}")
+    block.append(f"  rule_config = {hcl_value(r.get('rule_config') or {}, 1)}")
+    block.append("}")
+    return "\n".join(block)
+
+
+# Edge condition `config` keys the provider models, with the HCL type each takes.
+# Anything else is emitted as-is so `terraform plan` can report it.
+_COND_LIST_KEYS = {"values"}
+_COND_BOOL_KEYS = {"not", "case_insensitive", "raw", "null", "whitespace_string"}
+_COND_NUM_KEYS = {"percent"}
+
+
+def render_condition_config(cfg, type_id, ctx_label, warnings):
+    """Emit one leaf condition's `config {}` body faithfully. The API stores each
+    rule's config as a free-form map; the provider (>= 0.4.0) models `value` as a
+    single string and `values` as a list, plus typed boolean/number knobs."""
+    lines = []
+    for k, v in (cfg or {}).items():
+        if v is None or v == "" or v == []:
+            continue
+        key = k
+        if k == "value" and isinstance(v, list):
+            # Legacy shape (pre-0.4.0 provider wrote lists); the API rule that
+            # takes a set is `equals_any`, which the provider spells `values`.
+            key = "values"
+            if type_id != "equals_any":
+                warnings.append(
+                    f"{ctx_label}: condition '{type_id}' has a list `value` "
+                    f"{v!r}; emitted as `values`, which only `equals_any` accepts."
+                )
+        if key in _COND_LIST_KEYS:
+            vals = v if isinstance(v, list) else [v]
+            lines.append(f"          {key} = {hcl_value([str(x) for x in vals], 5)}")
+        elif key in _COND_BOOL_KEYS:
+            lines.append(f"          {key} = {'true' if v else 'false'}")
+        elif key in _COND_NUM_KEYS:
+            lines.append(f"          {key} = {json.dumps(v) if isinstance(v, (int, float)) else hcl_string(str(v))}")
+        elif isinstance(v, (dict, list)):
+            lines.append(f"          {key} = {hcl_value(v, 5)}")
+        else:
+            lines.append(f"          {key} = {hcl_string(str(v))}")
+    return lines
+
+
+def render_pipeline(p, id_to_addr, used_names, warnings, manifest, force_disabled=False, stats=None):
     name = p.get("name") or "pipeline"
     local = sanitize_name(name, used_names)
     manifest["resources"][p.get("id")] = {"address": f"monad_pipeline.{local}", "name": name, "type": "pipeline"}
+    id_to_addr[p.get("id")] = f"monad_pipeline.{local}"  # alert rules reference pipelines by id
     nodes = p.get("nodes") or []
     edges = p.get("edges") or []
+    stats = stats if stats is not None else {}
 
     # node instance id -> slug (edges in the API reference node ids; the
     # provider wires edges by slug, so we translate).
@@ -356,7 +583,8 @@ def render_pipeline(p, id_to_addr, used_names, warnings, manifest):
     lines.append(f"  name        = {hcl_string(name)}")
     if p.get("description"):
         lines.append(f"  description = {hcl_string(p['description'])}")
-    lines.append(f"  enabled     = {'true' if p.get('enabled', True) else 'false'}")
+    enabled = False if force_disabled else p.get("enabled", True)
+    lines.append(f"  enabled     = {'true' if enabled else 'false'}")
 
     for n in nodes:
         cid = n.get("component_id")
@@ -378,6 +606,11 @@ def render_pipeline(p, id_to_addr, used_names, warnings, manifest):
         frm = nodeid_to_slug.get(e.get("from_node_instance_id"), "")
         to = nodeid_to_slug.get(e.get("to_node_instance_id"), "")
         cond = e.get("conditions") or {}
+        edge_label = f"pipeline '{name}' edge {frm or '?'} -> {to or '?'}"
+        if (e.get("schema_detection_spec") or {}).get("enabled"):
+            stats["schema_detection_enabled"] = stats.get("schema_detection_enabled", 0) + 1
+        if e.get("disabled"):
+            stats["disabled_edges"] = stats.get("disabled_edges", 0) + 1
         lines.append("  edges {")
         if e.get("name"):
             lines.append(f"    name                    = {hcl_string(e['name'])}")
@@ -388,21 +621,20 @@ def render_pipeline(p, id_to_addr, used_names, warnings, manifest):
         lines.append("    condition {")
         lines.append(f"      operator = {hcl_string(cond.get('operator') or 'always')}")
         for c in cond.get("conditions") or []:
+            if c.get("operator") and not c.get("type_id"):
+                # The API allows logical operators to nest; the provider models a
+                # single logical layer over leaf rules.
+                warnings.append(
+                    f"{edge_label}: nested logical condition ({c.get('operator')}) "
+                    f"cannot be expressed by the provider and was dropped. Recreate "
+                    f"it on the target by hand."
+                )
+                continue
             cc = c.get("config") or {}
             lines.append("      conditions {")
             if c.get("type_id"):
                 lines.append(f"        type_id = {hcl_string(c['type_id'])}")
-            cfg_lines = []
-            if cc.get("key"):
-                cfg_lines.append(f"          key   = {hcl_string(str(cc['key']))}")
-            if cc.get("value") not in (None, "", []):
-                # provider expects a list of strings; coerce scalars/elements.
-                raw = cc["value"]
-                vals = raw if isinstance(raw, list) else [raw]
-                vals = [str(v) for v in vals]
-                cfg_lines.append(f"          value = {hcl_value(vals, 5)}")
-            if cc.get("rate"):
-                cfg_lines.append(f"          rate  = {hcl_string(str(cc['rate']))}")
+            cfg_lines = render_condition_config(cc, c.get("type_id"), edge_label, warnings)
             if cfg_lines:
                 lines.append("        config {")
                 lines.extend(cfg_lines)
@@ -416,7 +648,8 @@ def render_pipeline(p, id_to_addr, used_names, warnings, manifest):
 
 
 def write_module(outdir, args, secret_blocks, secret_vars, secret_tfvars,
-                 component_blocks, transform_blocks, pipeline_blocks, manifest, warnings):
+                 component_blocks, transform_blocks, pipeline_blocks, alert_rule_blocks,
+                 manifest, warnings):
     def w(fn, content):
         (outdir / fn).write_text(content.rstrip() + "\n")
 
@@ -425,7 +658,8 @@ def write_module(outdir, args, secret_blocks, secret_vars, secret_tfvars,
         '  required_version = ">= 1.5"\n'
         "  required_providers {\n"
         "    monad = {\n"
-        f'      source = "{PROVIDER_SOURCE}"\n'
+        f'      source  = "{PROVIDER_SOURCE}"\n'
+        f'      version = ">= {PROVIDER_MIN_VERSION}"\n'
         "    }\n  }\n}\n"
     ))
     w("provider.tf", (
@@ -451,6 +685,8 @@ def write_module(outdir, args, secret_blocks, secret_vars, secret_tfvars,
         w("transforms.tf", "\n\n".join(transform_blocks))
     if pipeline_blocks:
         w("pipelines.tf", "\n\n".join(pipeline_blocks))
+    if alert_rule_blocks:
+        w("alert_rules.tf", "\n\n".join(alert_rule_blocks))
 
     if getattr(args, "emit_imports", False):
         # `import {}` blocks adopt EXISTING resources (matched by their source
@@ -484,6 +720,14 @@ def write_module(outdir, args, secret_blocks, secret_vars, secret_tfvars,
     w("EXPORT_NOTES.md", render_notes(warnings, manifest))
     w("README.md", render_readme())
 
+    # Canonical formatting is cosmetic but keeps `terraform fmt -check` (and
+    # reviewers of a Git backup) quiet. Best effort: skip if terraform is absent.
+    try:
+        subprocess.run(["terraform", "fmt", "-no-color"], cwd=outdir, check=False,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except OSError:
+        pass
+
 
 def render_notes(warnings, manifest):
     counts = {}
@@ -496,7 +740,21 @@ def render_notes(warnings, manifest):
     lines.append("\n## Secrets\n")
     lines.append("Secret **values are never returned by the Monad API**, so this export "
                  "contains secret *definitions* only. Before `apply`, set each "
-                 "`secret_*` variable in `terraform.tfvars` (or via `TF_VAR_secret_*`).")
+                 "`secret_*` variable in `terraform.tfvars` (or via `TF_VAR_secret_*`). "
+                 "Every `{ id = ... }` secret reference in connector configs and every "
+                 "secret id embedded in a transform operation has been rewritten to "
+                 "`monad_secret.<name>.id`, so they resolve against the target's copies.")
+    lines.append("\n## Applying\n")
+    lines.append("Use `monad-org-export.py apply` or run `terraform apply -parallelism=1`. "
+                 "Pipeline creation is slow server-side and the provider's HTTP client "
+                 "times out after 60 s; at Terraform's default parallelism several pipelines "
+                 "are created at once, the later ones exceed the timeout, and Terraform "
+                 "records them as failed even though the server finishes creating them. "
+                 "If that happens anyway, `verify --write-imports` adopts the orphans.")
+    lines.append("\n## After apply\n")
+    lines.append("Run `monad-org-export.py verify --dir <this dir> --target-base-url ... "
+                 "--target-org-id ...` to confirm every exported resource exists on the "
+                 "target by name. Anything listed as missing did not migrate.")
     if warnings:
         lines.append("\n## Warnings\n")
         for wn in warnings:
@@ -515,7 +773,7 @@ def render_readme():
         "cp terraform.tfvars.example terraform.tfvars   # then edit it\n"
         "terraform init\n"
         "terraform plan\n"
-        "terraform apply\n"
+        "terraform apply -parallelism=1   # pipeline creates are slow; see EXPORT_NOTES.md\n"
         "```\n\n"
         "Connection settings (`monad_base_url`, `monad_api_token`,\n"
         "`monad_organization_id`) select the target. `https://app.monad.com` is the\n"
@@ -524,9 +782,12 @@ def render_readme():
         "## Secrets\n\n"
         "Secret values are not exported (the API never returns them). Set each\n"
         "`secret_*` variable before applying — see `EXPORT_NOTES.md`.\n\n"
+        "## Verify\n\n"
+        "After `apply`, run the exporter's `verify` subcommand against the target to\n"
+        "list anything from `MANIFEST.json` that does not exist there by name.\n\n"
         "## Files\n\n"
         "- `versions.tf` / `provider.tf` / `variables.tf` — provider + inputs\n"
-        "- `inputs.tf` `outputs.tf` `transforms.tf` `enrichments.tf` `secrets.tf` `pipelines.tf`\n"
+        "- `inputs.tf` `outputs.tf` `transforms.tf` `enrichments.tf` `secrets.tf` `pipelines.tf` `alert_rules.tf`\n"
         "- `MANIFEST.json` — source id -> Terraform address map\n"
         "- `EXPORT_NOTES.md` — counts, caveats, and any export warnings\n"
     )
@@ -550,10 +811,108 @@ def apply(args):
     if token:
         env["TF_VAR_monad_api_token"] = token
     run(["terraform", "init", "-input=false"], cwd=d, env=env)
-    cmd = ["terraform", "apply", "-input=false"]
+    # Pipeline creation is slow on the API side and the provider's HTTP client
+    # gives up after 60 s. With Terraform's default parallelism (10) several
+    # pipelines are created at once, the later ones exceed the timeout, and
+    # Terraform records them as failed even though the server finishes creating
+    # them -- leaving resources on the target that are missing from state. A
+    # low parallelism keeps each create inside the timeout.
+    cmd = ["terraform", "apply", "-input=false", f"-parallelism={args.parallelism}"]
     if args.auto_approve:
         cmd.append("-auto-approve")
     run(cmd, cwd=d, env=env)
+
+
+# ---------------------------------------------------------------------------
+# verify (did everything make it to the target?)
+# ---------------------------------------------------------------------------
+
+# manifest type -> (api_version, segment, envelope_key)
+_VERIFY_KINDS = {
+    "secret": ("v2", "secrets", "secrets"),
+    "monad_input": ("v1", "inputs", "inputs"),
+    "monad_output": ("v1", "outputs", "outputs"),
+    "monad_enrichment": ("v3", "enrichments", "enrichments"),
+    "monad_transform": ("v1", "transforms", "transforms"),
+    "pipeline": ("v2", "pipelines", "pipelines"),
+    "monad_alert_rule": ("v3", "alert_rules", "alert_rules"),
+}
+
+
+def verify(args):
+    """Read-only: list every resource kind on the TARGET org and report which
+    entries of MANIFEST.json have no same-named counterpart there. This is the
+    check that turns "the run finished" into "everything migrated"."""
+    d = Path(args.dir)
+    mpath = d / "MANIFEST.json"
+    if not mpath.exists():
+        die(f"{mpath} not found; point --dir at an exported module")
+    manifest = json.loads(mpath.read_text())
+    token = resolve_token(args, "MONAD_TARGET_API_TOKEN")
+    if not args.target_org_id:
+        die("--target-org-id is required")
+    client = Client(args.target_base_url, token, args.target_org_id, insecure=args.insecure)
+
+    wanted = {}  # type -> [(name, address)]
+    for rid, meta in manifest["resources"].items():
+        wanted.setdefault(meta["type"], []).append((meta["name"], meta["address"]))
+
+    # Addresses Terraform already tracks (only meaningful when run from a module
+    # that has been applied). A resource that exists on the target but is absent
+    # from state is an orphan of an interrupted apply -- typically a pipeline
+    # whose create outlived the provider's 60 s timeout. Those are what
+    # --write-imports recovers.
+    in_state = None
+    try:
+        r = subprocess.run(["terraform", "state", "list"], cwd=d, capture_output=True, text=True)
+        if r.returncode == 0:
+            in_state = set(r.stdout.split())
+    except OSError:
+        pass
+
+    missing_total, orphans = 0, []
+    print(f"{'kind':18} {'exported':>8} {'on target':>9} {'missing':>7}")
+    for kind, entries in sorted(wanted.items()):
+        spec = _VERIFY_KINDS.get(kind)
+        if not spec:
+            print(f"{kind:18} {len(entries):8} {'?':>9} {'?':>7}   (no list endpoint known)")
+            continue
+        try:
+            present = {r.get("name"): r.get("id") for r in client.list(*spec)}
+        except MonadAPIError as e:
+            print(f"{kind:18} {len(entries):8} {'ERR':>9} {'?':>7}   {e}")
+            missing_total += len(entries)
+            continue
+        missing = [n for n, _ in entries if n not in present]
+        missing_total += len(missing)
+        print(f"{kind:18} {len(entries):8} {len(entries) - len(missing):9} {len(missing):7}")
+        for n in missing:
+            print(f"    missing: {n}")
+        if in_state is not None:
+            for n, addr in entries:
+                if n in present and addr not in in_state:
+                    orphans.append((addr, present[n], n))
+
+    if orphans:
+        print(f"\n{len(orphans)} resource(s) exist on the target but are not in Terraform state "
+              f"(created by an apply that timed out):", file=sys.stderr)
+        for addr, tid, n in orphans:
+            print(f"    {addr}  <-  {tid}  ({n})", file=sys.stderr)
+        if args.write_imports:
+            blocks = ["# Generated by monad-org-export verify --write-imports.",
+                      "# Adopts resources an interrupted apply created but never recorded.",
+                      "# Run `terraform apply` once, then delete this file.", ""]
+            for addr, tid, _ in orphans:
+                blocks.append(f'import {{\n  to = {addr}\n  id = {hcl_string(tid)}\n}}')
+            (d / "imports-recover.tf").write_text("\n".join(blocks) + "\n")
+            print(f"    wrote {d / 'imports-recover.tf'}; re-run apply to adopt them.", file=sys.stderr)
+        else:
+            print("    re-run with --write-imports to generate import blocks for them.", file=sys.stderr)
+
+    if missing_total:
+        print(f"\n{missing_total} resource(s) from the export are not on the target.", file=sys.stderr)
+        sys.exit(2)
+    print("\nAll exported resources exist on the target.", file=sys.stderr)
 
 
 # ---------------------------------------------------------------------------
@@ -636,6 +995,9 @@ def build_parser():
             "  # Migrate into another org (SaaS or on-prem -- just change the URL)\n"
             "  MONAD_TARGET_API_TOKEN=... monad-org-export.py apply --dir ./org-tf \\\n"
             "      --target-base-url https://app.monad.com --target-org-id <DST_ORG>\n\n"
+            "  # Confirm everything landed on the target\n"
+            "  MONAD_TARGET_API_TOKEN=... monad-org-export.py verify --dir ./org-tf \\\n"
+            "      --target-base-url https://app.monad.com --target-org-id <DST_ORG>\n\n"
             "  # Back up to a Git repo\n"
             "  monad-org-export.py push --dir ./org-tf \\\n"
             "      --remote git@github.com:acme/monad-org-backup.git -m 'nightly backup'\n"
@@ -657,6 +1019,10 @@ def build_parser():
                    help="also write imports.tf with `import {}` blocks (Terraform 1.5+) to "
                         "ADOPT the source org's existing resources into state in place, "
                         "instead of creating new ones on a target")
+    e.add_argument("--pipelines-disabled", action="store_true",
+                   help="emit every pipeline with enabled = false so nothing runs on the "
+                        "target until its secret values are in place (recommended for "
+                        "migrations; omit for a faithful backup)")
     e.add_argument("--insecure", action="store_true",
                    help="skip TLS verification (self-signed on-prem only; not recommended)")
     e.set_defaults(func=export)
@@ -667,7 +1033,23 @@ def build_parser():
     a.add_argument("--target-org-id", help="target organization id")
     a.add_argument("--token-file", help="file containing the target API token")
     a.add_argument("--auto-approve", action="store_true", help="pass -auto-approve to terraform")
+    a.add_argument("--parallelism", type=int, default=1,
+                   help="terraform -parallelism (default 1: pipeline creates are slow and the "
+                        "provider times out after 60 s when several run at once)")
     a.set_defaults(func=apply)
+
+    v = sub.add_parser("verify", help="check that every exported resource exists on a TARGET org")
+    v.add_argument("--dir", required=True, help="exported module directory (reads MANIFEST.json)")
+    v.add_argument("--target-base-url", default=os.environ.get("MONAD_BASE_URL", DEFAULT_BASE_URL),
+                   help=f"target instance base URL (default {DEFAULT_BASE_URL})")
+    v.add_argument("--target-org-id", default=os.environ.get("MONAD_ORGANIZATION_ID"),
+                   help="target organization id")
+    v.add_argument("--token-file", help="file containing the target API token")
+    v.add_argument("--write-imports", action="store_true",
+                   help="write imports-recover.tf for resources that exist on the target but are "
+                        "missing from Terraform state (left behind by a timed-out apply)")
+    v.add_argument("--insecure", action="store_true", help="skip TLS verification")
+    v.set_defaults(func=verify)
 
     g = sub.add_parser("push", help="commit the module to a Git remote for backup")
     g.add_argument("--dir", required=True, help="exported module directory")
