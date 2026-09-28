@@ -22,8 +22,10 @@ set -euo pipefail
 
 PROVIDER_SOURCE="monad-inc/monad"
 # The HCL this tool emits (scalar edge `value`, `values` lists, monad_alert_rule,
-# `{ id = ... }` secret references) matches the provider from 0.4.1 on.
-PROVIDER_MIN_VERSION="0.4.1"
+# `{ id = ... }` secret references, edge schema_detection_spec) matches the
+# provider from 0.5.0 on. The module pins the 0.5 minor series (`~> 0.5.0`): the
+# provider is pre-1.0 and ships breaking changes as minor bumps.
+PROVIDER_MIN_VERSION="0.5.0"
 DEFAULT_BASE_URL="https://app.monad.com"
 
 usage() {
@@ -59,9 +61,9 @@ apply OPTIONS
   --token-file <path>     file holding the target API token
                           (else $MONAD_TARGET_API_TOKEN / $MONAD_API_TOKEN)
   --auto-approve          pass -auto-approve to terraform
-  --parallelism <n>       terraform -parallelism (default 1: pipeline creates are
-                          slow and the provider times out after 60 s when several
-                          run at once)
+  --parallelism <n>       terraform -parallelism (default 1: the API creates
+                          pipelines one request at a time, so concurrent creates
+                          only queue)
 
 verify OPTIONS
   --dir <dir>             exported module directory (reads MANIFEST.json)    [required]
@@ -290,14 +292,38 @@ cmd_export() {
   # Things the provider cannot carry across.
   jq -r '[.[] | .edges[]? | select(.schema_detection_spec.enabled == true)] | length
          | select(. > 0)
-         | "warning: \(.) edge(s) have schema drift detection enabled on the source; the provider cannot express schema_detection_spec, so re-enable it on the target after the first apply."' \
+         | "note: \(.) edge(s) have schema drift detection enabled on the source and are emitted with a schema_detection_spec block; the learned schema is not copied, so on another org or instance they start learning again (about 48 hours)."' \
     "$WORKDIR/pipelines.json" >&2 || true
   jq -r '[.[] | .edges[]? | select(.disabled == true)] | length | select(. > 0)
          | "warning: \(.) edge(s) are disabled on the source; the provider has no disabled attribute, so they are created enabled."' \
     "$WORKDIR/pipelines.json" >&2 || true
-  jq -r '[.[] | select(.version != null and .version != 0 and .version != 1)] | .[]
-         | "warning: \(.name) runs connector version \(.version) of \(.type); the provider cannot pin a version, so the target gets the default."' \
-    "$WORKDIR/inputs.json" "$WORKDIR/outputs.json" "$WORKDIR/enrichments.json" >&2 || true
+  # Connector versions. The provider has no version attribute: a create gets the
+  # type's LATEST version, while an existing component keeps its pinned version
+  # across import and updates. So warn only for components pinned below the
+  # latest version, and only when the module creates them (not --emit-imports).
+  # The enrichment catalog reports no versions, so enrichments fall back to v > 1.
+  if [ -z "$emit_imports" ]; then
+    local seg
+    for seg in inputs outputs; do
+      if ! api_get "/v1/$seg" > "$WORKDIR/catalog_$seg.json" 2>/dev/null; then
+        echo "warning: could not read the $seg type catalog; connector versions were not checked for $seg." >&2
+        echo '[]' > "$WORKDIR/catalog_$seg.json"
+      fi
+      jq -r --slurpfile c "$WORKDIR/catalog_$seg.json" '
+          ($c[0] | map({key: .type_id, value: .version}) | from_entries) as $latest
+          | .[] | select((.version // 0) > 0)
+          | ($latest[.type] // null) as $lv
+          | if $lv == null then
+              select(.version > 1)
+              | "warning: \(.name) runs connector version \(.version) of \(.type), and the type catalog reports no latest version; the provider cannot set a version, so the target creates the latest. Check the settings still apply."
+            elif .version != $lv then
+              "warning: \(.name) is pinned to connector version \(.version) of \(.type); the latest on the source instance is \($lv). The provider cannot set a version, so the target creates its latest version and settings written for version \(.version) may be rejected. --emit-imports (same org, in place) keeps the pin."
+            else empty end' "$WORKDIR/$seg.json" >&2 || true
+    done
+    jq -r '.[] | select((.version // 0) > 1)
+           | "warning: \(.name) runs connector version \(.version) of \(.type); the provider cannot set a version, so the target creates the latest. Check the settings still apply."' \
+      "$WORKDIR/enrichments.json" >&2 || true
+  fi
 
   # Warn about pipeline nodes referencing components we did not export.
   jq -r --slurpfile m "$WORKDIR/map.json" '
@@ -372,7 +398,7 @@ gen_pipelines() { # items map outfile
     | "resource \"monad_pipeline\" \"\($meta.local)\" {\n"
       + "  name        = \(.name | hclstr)\n"
       + (if (.description // "") != "" then "  description = \(.description | hclstr)\n" else "" end)
-      + "  enabled     = \(if $disabled != "" then false else (.enabled // true) end)\n"
+      + "  enabled     = \(if $disabled != "" then false else (.enabled != false) end)\n"
       + ( [ .nodes[]? | ($MAP.byid[.component_id]) as $cm
           | "  nodes {\n"
             + "    slug           = \(.slug | hclstr)\n"
@@ -419,6 +445,14 @@ gen_pipelines() { # items map outfile
                   end
               ] | join("") )
             + "    }\n"
+            # Omitted block = detection off; emit only the flags that are on.
+            + ( (.schema_detection_spec // {}) as $sd
+                | if ($sd.enabled == true or $sd.disable_alerting == true) then
+                    "    schema_detection_spec {\n"
+                    + (if $sd.enabled == true then "      enabled          = true\n" else "" end)
+                    + (if $sd.disable_alerting == true then "      disable_alerting = true\n" else "" end)
+                    + "    }\n"
+                  else "" end )
             + "  }\n"
         ] | join("") )
       + "}\n"
@@ -438,7 +472,7 @@ gen_alert_rules() { # items map outfile
       + (if (.description // "") != "" then "  description = \(.description | hclstr)\n" else "" end)
       + "  type        = \((.type // "") | hclstr)\n"
       + "  severity    = \((.severity // "medium") | hclstr)\n"
-      + "  active      = \(.active // true)\n"
+      + "  active      = \(.active != false)\n"
       + ( (.pipeline_ids // []) as $pids
           | if ($pids | length) > 0 then
               "  pipeline_ids = [" + ($pids | map(if $MAP.byid[.] then "\($MAP.byid[.].addr).id" else (. | hclstr) end) | join(", ")) + "]\n"
@@ -457,11 +491,11 @@ gen_scaffold() { # map outdir emit_imports
 
   cat > "$outdir/versions.tf" <<EOF
 terraform {
-  required_version = ">= 1.5"
+  required_version = ">= 1.11" # write-only secret values
   required_providers {
     monad = {
       source  = "$PROVIDER_SOURCE"
-      version = ">= $PROVIDER_MIN_VERSION"
+      version = "~> $PROVIDER_MIN_VERSION"
     }
   }
 }
@@ -560,11 +594,12 @@ write_notes() { # map outdir
     echo "## Applying"
     echo
     echo "Use \`monad-org-export.sh apply\` or run \`terraform apply -parallelism=1\`."
-    echo "Pipeline creation is slow server-side and the provider's HTTP client times"
-    echo "out after 60 s; at Terraform's default parallelism several pipelines are"
-    echo "created at once, the later ones exceed the timeout, and Terraform records"
-    echo "them as failed even though the server finishes creating them. If that"
-    echo "happens anyway, \`verify --write-imports\` adopts the orphans."
+    echo "The API creates pipelines one request at a time, so at Terraform's default"
+    echo "parallelism the later creates queue behind the earlier ones. The provider"
+    echo "gives each call 5 minutes (\`request_timeout\`) and adopts a pipeline whose"
+    echo "create outlived that budget but finished on the server; parallelism 1 avoids"
+    echo "the queue altogether. If an apply is interrupted anyway,"
+    echo "\`verify --write-imports\` adopts anything left out of state."
     echo
     echo "## After apply"
     echo
@@ -649,8 +684,8 @@ cmd_apply() {
     export TF_VAR_monad_api_token="$MONAD_API_TOKEN"
   fi
 
-  # Low parallelism keeps each (slow) pipeline create inside the provider's
-  # 60 s HTTP timeout; see EXPORT_NOTES.md in the module.
+  # The API creates pipelines one request at a time; low parallelism keeps each
+  # create well inside the provider's 5-minute budget. See EXPORT_NOTES.md.
   ( cd "$dir" && terraform init -input=false && terraform apply -input=false "-parallelism=$par" $auto )
 }
 

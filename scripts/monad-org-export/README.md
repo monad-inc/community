@@ -36,8 +36,10 @@ target:
 **Monad API surface (all read-only):** `GET /v1/{org}/inputs`, `GET /v1/{org}/outputs`,
 `GET /v1/{org}/transforms`, `GET /v3/{org}/enrichments`, `GET /v2/{org}/secrets`,
 `GET /v2/{org}/pipelines` + `GET /v2/{org}/pipelines/{id}`,
-`GET /v3/{org}/alert_rules`, and `GET /v1|v3/{org}/<kind>/{id}` for any component a
-pipeline references that the list endpoints did not return. The `apply` and
+`GET /v3/{org}/alert_rules`, `GET /v1|v3/{org}/<kind>/{id}` for any component a
+pipeline references that the list endpoints did not return, and the type catalogs
+`GET /v1/inputs` + `GET /v1/outputs` (to compare each connector's version with the
+latest). The `apply` and
 `push` subcommands shell out to `terraform` and `git` respectively; `verify`
 reads the target with the same list endpoints and, when run inside an applied
 module, `terraform state list`.
@@ -48,13 +50,15 @@ module, `terraform state list`.
   only — no third-party packages.
 - **Bash version (`monad-org-export.sh`):** `bash` 3.2+ (macOS default), plus
   [`curl`](https://curl.se/) and [`jq`](https://jqlang.github.io/jq/) **1.6+**.
-- Both: [`terraform`](https://developer.hashicorp.com/terraform) **1.5+** is
-  needed for `apply` (and required by `--emit-imports`); `git` is needed for
-  `push`. Neither is needed for `export` itself (if `terraform` is present,
+- Both: [`terraform`](https://developer.hashicorp.com/terraform) **1.11+** is
+  needed for `apply`, because the module's secret values are write-only
+  arguments; `git` is needed for `push`. Neither is needed for `export` itself (if `terraform` is present,
   `export` runs `terraform fmt` on the output).
-- The generated module pins the provider to **`monad-inc/monad >= 0.4.1`**. The
-  HCL it emits (scalar edge `value`, `values` lists, `monad_alert_rule`,
-  structured `{ id = ... }` secret references) does not load on older releases.
+- The generated module pins the provider to **`monad-inc/monad ~> 0.5.0`** (0.5.x
+  patches only; the provider is pre-1.0 and ships breaking changes as minor
+  bumps). The HCL it emits (scalar edge `value`, `values` lists,
+  `monad_alert_rule`, structured `{ id = ... }` secret references, edge
+  `schema_detection_spec`) does not load on older releases.
 - Platform notes: macOS/Linux.
 
 Examples below use the Python entrypoint; substitute `./monad-org-export.sh` for
@@ -152,10 +156,11 @@ apply** — import blocks are one-time.
 
 ### Recovering from a partial apply
 
-If `apply` stops with `Client Error … Client.Timeout exceeded` on one or more
-pipelines, the API usually finished creating them after the provider gave up, so
-they exist on the target but not in Terraform state — and a plain re-run would
-create duplicates. Run:
+If `apply` is interrupted (the run is killed, or a create on a resource type
+other than `monad_pipeline` times out), resources the API finished creating can
+exist on the target but not in Terraform state — and a plain re-run would try to
+create them again. Pipelines are covered by the provider itself: it adopts a
+pipeline whose create outlived its timeout. For everything else, run:
 
 ```bash
 ./monad-org-export.py verify --dir ./org-tf --target-org-id <DST_ORG_ID> --write-imports
@@ -187,23 +192,29 @@ second adopts them and creates whatever is still missing; then `verify` again.
   `monad_secret.<name>.id`. A reference to a secret this export did not see
   (deleted, or owned by another org) is emitted literally and listed in
   `EXPORT_NOTES.md`; it will not resolve on a different instance.
-- **Pipeline creation is slow on the API side, and the provider times out after
-  60 s.** At Terraform's default parallelism several pipelines are created at
-  once, the later ones exceed the timeout, and Terraform records them as failed
-  even though the server finishes creating them. `apply` therefore defaults to
-  `-parallelism=1`; if you run `terraform apply` yourself, pass it explicitly.
-  If it happens anyway, see *Recovering from a partial apply*.
-- **Schema drift detection is not carried across.** The provider cannot express
-  an edge's `schema_detection_spec`, so every edge on the target starts with
-  detection disabled. `EXPORT_NOTES.md` counts the affected edges; re-enable them
-  after the first apply (`PATCH /v2/{org}/pipelines/{id}/edges/{edge_id}`).
+- **The API creates pipelines one request at a time.** At Terraform's default
+  parallelism the later pipeline creates queue behind the earlier ones. The
+  provider gives each call 5 minutes (`request_timeout`) and, when a pipeline
+  create outlives that budget but finishes on the server, adopts it into state
+  instead of leaving a duplicate for the next run. `apply` still defaults to
+  `-parallelism=1`, which avoids the queue; if you run `terraform apply`
+  yourself, pass it explicitly. If a run is interrupted anyway, see
+  *Recovering from a partial apply*.
+- **Schema drift detection settings are carried, the learned schema is not.**
+  Edges with detection on are emitted with a `schema_detection_spec` block
+  (`enabled`, and `disable_alerting` where set). On a different org or instance
+  each of those edges starts learning again (about 48 hours) before it can
+  raise drift alerts. `EXPORT_NOTES.md` counts them.
 - **Disabled edges are created enabled** (no `disabled` attribute in the
   provider); **nested logical conditions** (a logical operator inside another)
   are dropped with a warning — the provider models one logical layer over leaf
   rules. Both are reported in `EXPORT_NOTES.md`.
 - **Connector versions are not pinned.** The provider has no `version` attribute,
-  so the target creates each connector type's default version; sources running a
-  non-default version are flagged.
+  so a create on the target gets each connector type's **latest** version. A
+  source component pinned below the latest version (checked against the source
+  instance's type catalog) is flagged, because settings written for the older
+  version may be rejected by the newer one. Adopting the same org in place with
+  `--emit-imports` keeps every pinned version, so nothing is flagged there.
 - **System-managed alert rules are skipped** (`Schema Drift Detection`,
   `Pipeline Throttled`): every org already has them. Customer-managed rules are
   exported with their `pipeline_ids` rewritten to the recreated pipelines.

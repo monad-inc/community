@@ -40,8 +40,10 @@ from pathlib import Path
 
 PROVIDER_SOURCE = "monad-inc/monad"
 # The HCL this tool emits (scalar edge `value`, `values` lists, `monad_alert_rule`,
-# structured `{ id = ... }` secret references) matches the provider from 0.4.1 on.
-PROVIDER_MIN_VERSION = "0.4.1"
+# structured `{ id = ... }` secret references, edge `schema_detection_spec`)
+# matches the provider from 0.5.0 on. The module pins the 0.5 minor series
+# (`~> 0.5.0`): the provider is pre-1.0 and ships breaking changes as minor bumps.
+PROVIDER_MIN_VERSION = "0.5.0"
 DEFAULT_BASE_URL = "https://app.monad.com"
 
 # REST paths per resource type. Monad serves a deliberate mix of API versions
@@ -302,6 +304,11 @@ def export(args):
         )
         secret_tfvars.append(f'{var} = "REPLACE_ME"  # {s.get("name")}')
 
+    version_ctx = {
+        "in_place": bool(getattr(args, "emit_imports", False)),
+        "latest": fetch_latest_versions(client, warnings),
+    }
+
     # ---- component resources (inputs/outputs/transforms/enrichments)
     component_blocks = {tf: [] for _, _, _, tf in RESOURCE_KINDS}
     for version, segment, env_key, tf_type in RESOURCE_KINDS:
@@ -315,7 +322,8 @@ def export(args):
             if args.customer_only and it.get("managed_by") not in (None, "customer"):
                 continue
             component_blocks[tf_type].append(
-                render_component(it, tf_type, id_to_addr, secret_ref_map, used_names, warnings, manifest)
+                render_component(it, tf_type, id_to_addr, secret_ref_map, used_names, warnings, manifest,
+                                 version_ctx)
             )
 
     # ---- transforms (distinct schema: required dynamic `config`, no `type`)
@@ -371,7 +379,8 @@ def export(args):
         else:
             tf_type = {"input": "monad_input", "output": "monad_output", "enrichment": "monad_enrichment"}[ctype]
             component_blocks[tf_type].append(
-                render_component(it, tf_type, id_to_addr, secret_ref_map, used_names, warnings, manifest)
+                render_component(it, tf_type, id_to_addr, secret_ref_map, used_names, warnings, manifest,
+                                 version_ctx)
             )
 
     # ---- pipelines (need per-pipeline GET for nodes/edges)
@@ -392,10 +401,10 @@ def export(args):
     if pipeline_stats["schema_detection_enabled"]:
         warnings.append(
             f"{pipeline_stats['schema_detection_enabled']} edge(s) have schema drift "
-            f"detection enabled on the source. The Terraform provider cannot express "
-            f"`schema_detection_spec`, so on the target these edges start with detection "
-            f"disabled; re-enable it after the first apply (PATCH "
-            f"/v2/{{org}}/pipelines/{{id}}/edges/{{edge_id}})."
+            f"detection enabled on the source and are emitted with a "
+            f"`schema_detection_spec` block. The learned schema itself is not copied: "
+            f"on a different org or instance each of these edges starts learning again "
+            f"(about 48 hours) before it can raise drift alerts."
         )
     if pipeline_stats["disabled_edges"]:
         warnings.append(
@@ -447,19 +456,58 @@ def export(args):
         print(f"\n{len(warnings)} warning(s) — see {outdir}/EXPORT_NOTES.md", file=sys.stderr)
 
 
-def _warn_version(it, addr, warnings):
-    # The provider has no `version` attribute, so the target always creates the
-    # connector type's current default version. Flag anything that isn't v1.
-    v = it.get("version")
-    if v not in (None, 0, 1, "1"):
+def fetch_latest_versions(client, warnings):
+    """Map (terraform type, connector type_id) -> the latest version the source
+    instance offers, from the input/output type catalogs. The enrichment catalog
+    does not report versions, so enrichments are absent from the map."""
+    latest = {}
+    for segment, tf_type in (("inputs", "monad_input"), ("outputs", "monad_output")):
+        try:
+            catalog = client._get(f"/v1/{segment}")
+        except MonadAPIError as e:
+            warnings.append(f"Could not read the {segment} type catalog ({e}); "
+                            f"connector versions were not checked for {segment}.")
+            continue
+        for t in catalog if isinstance(catalog, list) else _first_list(catalog):
+            if t.get("type_id") and t.get("version"):
+                latest[(tf_type, t["type_id"])] = int(t["version"])
+    return latest
+
+
+def _warn_version(it, tf_type, addr, warnings, version_ctx):
+    # The provider has no `version` attribute. A create gets the connector type's
+    # LATEST version; an existing component keeps its pinned version across
+    # import and updates (verified against the live API). So only a component
+    # pinned below the latest version is at risk, and only when the module
+    # creates it rather than adopting it in place.
+    if not version_ctx or version_ctx.get("in_place"):
+        return
+    try:
+        v = int(it.get("version") or 0)
+    except (TypeError, ValueError):
+        return
+    lv = version_ctx["latest"].get((tf_type, it.get("type")))
+    if lv is None:
+        if v > 1:
+            warnings.append(
+                f"{addr}: source runs connector version {v} of type '{it.get('type')}', "
+                f"and the type catalog does not report a latest version. The provider "
+                f"cannot set a version, so the target creates the type's latest version; "
+                f"check the settings still apply."
+            )
+        return
+    if v and v != lv:
         warnings.append(
-            f"{addr}: source runs connector version {v} of type '{it.get('type')}'. "
-            f"The provider cannot pin a connector version, so the target gets the "
-            f"type's default version; check the settings still apply."
+            f"{addr}: source is pinned to connector version {v} of type "
+            f"'{it.get('type')}'; the latest version on the source instance is {lv}. "
+            f"The provider cannot set a version, so the target creates the target's "
+            f"latest version, and settings written for version {v} may be rejected. "
+            f"Adopting the same org in place (--emit-imports) keeps the pinned version."
         )
 
 
-def render_component(it, tf_type, id_to_addr, secret_ref_map, used_names, warnings, manifest):
+def render_component(it, tf_type, id_to_addr, secret_ref_map, used_names, warnings, manifest,
+                     version_ctx=None):
     local = sanitize_name(it.get("name"), used_names)
     addr = f"{tf_type}.{local}"
     id_to_addr[it["id"]] = addr
@@ -467,7 +515,7 @@ def render_component(it, tf_type, id_to_addr, secret_ref_map, used_names, warnin
         "address": addr, "name": it.get("name"), "type": tf_type,
         "connector_type": it.get("type"),
     }
-    _warn_version(it, addr, warnings)
+    _warn_version(it, tf_type, addr, warnings, version_ctx)
     block = [f'resource "{tf_type}" "{local}" {{']
     block.append(f"  name        = {hcl_string(it.get('name') or local)}")
     if it.get("description"):
@@ -641,6 +689,17 @@ def render_pipeline(p, id_to_addr, used_names, warnings, manifest, force_disable
                 lines.append("        }")
             lines.append("      }")
         lines.append("    }")
+        # Omitting the block means detection is off, and the provider asks for a
+        # field to be omitted rather than written as false, so emit only the
+        # flags that are on.
+        sds = e.get("schema_detection_spec") or {}
+        if sds.get("enabled") or sds.get("disable_alerting"):
+            lines.append("    schema_detection_spec {")
+            if sds.get("enabled"):
+                lines.append("      enabled          = true")
+            if sds.get("disable_alerting"):
+                lines.append("      disable_alerting = true")
+            lines.append("    }")
         lines.append("  }")
 
     lines.append("}")
@@ -655,11 +714,11 @@ def write_module(outdir, args, secret_blocks, secret_vars, secret_tfvars,
 
     w("versions.tf", (
         "terraform {\n"
-        '  required_version = ">= 1.5"\n'
+        '  required_version = ">= 1.11"  # write-only secret values\n'
         "  required_providers {\n"
         "    monad = {\n"
         f'      source  = "{PROVIDER_SOURCE}"\n'
-        f'      version = ">= {PROVIDER_MIN_VERSION}"\n'
+        f'      version = "~> {PROVIDER_MIN_VERSION}"\n'
         "    }\n  }\n}\n"
     ))
     w("provider.tf", (
@@ -746,11 +805,12 @@ def render_notes(warnings, manifest):
                  "`monad_secret.<name>.id`, so they resolve against the target's copies.")
     lines.append("\n## Applying\n")
     lines.append("Use `monad-org-export.py apply` or run `terraform apply -parallelism=1`. "
-                 "Pipeline creation is slow server-side and the provider's HTTP client "
-                 "times out after 60 s; at Terraform's default parallelism several pipelines "
-                 "are created at once, the later ones exceed the timeout, and Terraform "
-                 "records them as failed even though the server finishes creating them. "
-                 "If that happens anyway, `verify --write-imports` adopts the orphans.")
+                 "The API creates pipelines one request at a time, so at Terraform's "
+                 "default parallelism the later creates queue behind the earlier ones. "
+                 "The provider gives each call 5 minutes (`request_timeout`) and adopts a "
+                 "pipeline whose create outlived that budget but finished on the server; "
+                 "parallelism 1 avoids the queue altogether. If an apply is interrupted "
+                 "anyway, `verify --write-imports` adopts anything left out of state.")
     lines.append("\n## After apply\n")
     lines.append("Run `monad-org-export.py verify --dir <this dir> --target-base-url ... "
                  "--target-org-id ...` to confirm every exported resource exists on the "
@@ -811,12 +871,11 @@ def apply(args):
     if token:
         env["TF_VAR_monad_api_token"] = token
     run(["terraform", "init", "-input=false"], cwd=d, env=env)
-    # Pipeline creation is slow on the API side and the provider's HTTP client
-    # gives up after 60 s. With Terraform's default parallelism (10) several
-    # pipelines are created at once, the later ones exceed the timeout, and
-    # Terraform records them as failed even though the server finishes creating
-    # them -- leaving resources on the target that are missing from state. A
-    # low parallelism keeps each create inside the timeout.
+    # The API creates pipelines one request at a time, so with Terraform's
+    # default parallelism (10) the later creates queue behind the earlier ones.
+    # Provider 0.5.0+ gives each call 5 minutes and adopts a pipeline create that
+    # outlived it, but a low parallelism keeps every create well inside the
+    # budget and avoids the adoption path entirely.
     cmd = ["terraform", "apply", "-input=false", f"-parallelism={args.parallelism}"]
     if args.auto_approve:
         cmd.append("-auto-approve")
@@ -859,9 +918,9 @@ def verify(args):
 
     # Addresses Terraform already tracks (only meaningful when run from a module
     # that has been applied). A resource that exists on the target but is absent
-    # from state is an orphan of an interrupted apply -- typically a pipeline
-    # whose create outlived the provider's 60 s timeout. Those are what
-    # --write-imports recovers.
+    # from state is an orphan of an interrupted apply (a killed run, or a create
+    # that timed out on a resource type the provider does not adopt). Those are
+    # what --write-imports recovers.
     in_state = None
     try:
         r = subprocess.run(["terraform", "state", "list"], cwd=d, capture_output=True, text=True)
@@ -1034,8 +1093,8 @@ def build_parser():
     a.add_argument("--token-file", help="file containing the target API token")
     a.add_argument("--auto-approve", action="store_true", help="pass -auto-approve to terraform")
     a.add_argument("--parallelism", type=int, default=1,
-                   help="terraform -parallelism (default 1: pipeline creates are slow and the "
-                        "provider times out after 60 s when several run at once)")
+                   help="terraform -parallelism (default 1: the API creates pipelines one "
+                        "request at a time, so concurrent creates only queue)")
     a.set_defaults(func=apply)
 
     v = sub.add_parser("verify", help="check that every exported resource exists on a TARGET org")
