@@ -11,9 +11,14 @@
 #   validate-against-ocsf.sh okta-systemlog.yaml sample.json 1.1.0 authentication cloud,host
 #   validate-against-ocsf.sh wiz-vulnerabilities.yaml sample.json 1.5.0 2002
 #
-# Profiles default to empty (no profile-required fields enforced). Pass a
-# comma-separated list to opt into profile validation. Use the literal string
-# "all" to enforce every profile the class declares.
+# Profiles default to the ones the event declares in metadata.profiles (what the
+# hosted validator uses). Pass a comma-separated list to override, or the
+# literal string "all" to enforce every profile the class declares.
+#
+# Profile attributes (device, policy, action_id, cloud, ...) emitted without
+# their profile in metadata.profiles are reported as UNDECLARED PROFILE
+# ATTRIBUTES and fail the check: the hosted validator rejects them as
+# attribute_unknown.
 #
 # Requires: yq (mikefarah), jq, plus run-transform.sh in the same directory.
 
@@ -46,11 +51,21 @@ if [[ "$class_json" == "null" || -z "$class_json" ]]; then
   exit 65
 fi
 
+output=$("$here/run-transform.sh" "$transform" "$input")
+# The transform may emit an array or a stream of events, possibly of several
+# classes; check the first event of the requested class.
+class_uid=$(jq -r '.uid' <<<"$class_json")
+event=$(jq -cs --argjson uid "$class_uid" '
+  [.[] | if type == "array" then .[] else . end]
+  | (map(select(.class_uid == $uid))[0] // .[0])
+' <<<"$output")
+declared_profiles_jq=$(jq -c '.metadata.profiles // []' <<<"$event")
+
 # Build the active-profile filter as a jq array literal.
 if [[ "$profiles_arg" == "all" ]]; then
   active_profiles_jq=$(jq -c '.profiles // []' <<<"$class_json")
 elif [[ -z "$profiles_arg" ]]; then
-  active_profiles_jq='[]'
+  active_profiles_jq="$declared_profiles_jq"
 else
   active_profiles_jq=$(printf '%s' "$profiles_arg" | jq -Rc 'split(",") | map(. | gsub("^\\s+|\\s+$"; ""))')
 fi
@@ -72,7 +87,6 @@ recommended=$(jq -r --argjson active "$active_profiles_jq" '
 ' <<<"$class_json")
 
 known=$(jq -r '[.attributes | keys[]] | sort | .[]' <<<"$class_json")
-class_uid=$(jq -r '.uid' <<<"$class_json")
 class_caption=$(jq -r '.caption' <<<"$class_json")
 
 # Some transforms emit fields outside the OCSF spec (e.g., "raw_data",
@@ -80,11 +94,20 @@ class_caption=$(jq -r '.caption' <<<"$class_json")
 # and not flagged as unknown.
 allowlist=$'raw_data\nunmapped\nref_time'
 
-output=$("$here/run-transform.sh" "$transform" "$input")
-output_keys=$(jq -r 'if type == "array" then .[0] else . end | keys[]' <<<"$output" | sort -u)
+output_keys=$(jq -r 'keys[]' <<<"$event" | sort -u)
+
+# Top-level keys that belong to a profile the event does not declare.
+undeclared=$(jq -r --argjson declared "$declared_profiles_jq" --argjson event "$event" '
+  [.attributes | to_entries[]
+   | select(.value.profile != null)
+   | select(.key as $k | $event | has($k))
+   | select(.value.profile as $p | $declared | index($p) | not)
+   | "\(.key) (profile: \(.value.profile))"]
+  | sort | .[]
+' <<<"$class_json")
 
 printf 'Class: %s (uid=%s)  OCSF v%s\n' "$class_caption" "$class_uid" "$version"
-printf 'Active profiles: %s\n' "$active_profiles_jq"
+printf 'Active profiles: %s  (declared in metadata.profiles: %s)\n' "$active_profiles_jq" "$declared_profiles_jq"
 printf 'Transform: %s\n\n' "$transform"
 
 missing_required=$(comm -23 <(printf '%s\n' "$required") <(printf '%s\n' "$output_keys"))
@@ -112,6 +135,14 @@ else
   printf 'UNKNOWN TOP-LEVEL KEYS: none\n'
 fi
 
+echo
+if [[ -n "$undeclared" ]]; then
+  printf 'UNDECLARED PROFILE ATTRIBUTES (add the profile to metadata.profiles or drop the attribute; validate2 rejects them):\n'
+  printf '%s\n' "$undeclared" | sed 's/^/  - /'
+else
+  printf 'UNDECLARED PROFILE ATTRIBUTES: none\n'
+fi
+
 # Standard jq helper drift (warning only; see SKILL.md "Standard jq helpers").
 echo
 helper_findings=$("$here/jq-helpers.sh" check "$transform" 2>&1 | grep -E 'DRIFT|MISSING-DEP|UNMANAGED|ERROR' || true)
@@ -121,5 +152,6 @@ else
   printf 'JQ HELPERS: no drift\n'
 fi
 
-# Exit non-zero if required fields are missing (CI-friendly).
-[[ -z "$missing_required" ]]
+# Exit non-zero if required fields are missing or profile attributes are
+# undeclared (CI-friendly).
+[[ -z "$missing_required" && -z "$undeclared" ]]

@@ -21,6 +21,8 @@ Read it before starting; its rules are part of this skill.
 - `jq` and `yq` (mikefarah, v4) on `PATH`, plus `bash` and `git`.
 - `curl` and network access for the official OCSF validator API
   (`schema.ocsf.io`) and for installing additional schema versions.
+- `python3` (standard library only) to install additional schema versions with
+  complete profile annotations.
 - Optional: the GitHub CLI (`gh`) for forking and opening the pull request.
 - Optional: the Monad MCP server (`https://app.monad.com/mcp`) for live sample
   data and pipeline testing. Without it, use user-provided or synthetic records.
@@ -78,19 +80,31 @@ If a construct isn't in an installed schema, check the live schema:
 `https://schema.ocsf.io/<version>/api/classes`, `…/api/objects/<name>`,
 `…/api/profiles/<name>`.
 
-### `cloud` and `osint` are optional profile attributes
+### Every profile attribute needs its profile declared
 
-They belong to the `cloud` and `osint` profiles, not the base class. Two traps:
+Many class attributes belong to a profile rather than the base class: `cloud`
+(cloud), `osint` (osint), `device` (host on most classes), `policy`,
+`firewall_rule`, `action_id`, `disposition_id`, `authorizations`, `risk_*`,
+`malware` (security_control), `proxy_endpoint` (network_proxy), `src_url`
+(incident), `*_dt` (datetime), `ai_model` / `message_context` (ai_operation),
+and more. Two traps:
 
-- On 1.8.0 and later, the live `/<ver>/api/classes/<name>` endpoint reports them
-  as `requirement: required, profile: null`. That is a quirk of the browse API.
-  `fetch-ocsf-schema.sh` restores the profile, so `validate-against-ocsf.sh`
-  does not demand them. Emit them only when the source truly carries cloud or
-  OSINT data.
-- The hosted validator rejects a `cloud`/`osint` attribute ("not defined in
-  class …") unless the event declares the profile. If you emit them, set
-  `metadata.profiles: ["cloud","osint"]` and pass `cloud,osint` as the profiles
-  argument to `validate-against-ocsf.sh`.
+- On 1.8.0 and later, the live `/<ver>/api/classes/<name>`, `/api/objects/<name>`,
+  and `/api/base_event` endpoints report **every** profile attribute as
+  `profile: null` (and `cloud`/`osint` as required). That is a quirk of the
+  browse API. `fetch-ocsf-schema.sh` runs `restore-profile-annotations.py`,
+  which recovers each attribute's profile by comparing the class or object
+  fetched with `?profiles=` against `?profiles=<p>`. The shipped 1.9.0 bundle
+  already has this applied.
+- The hosted validator rejects any profile attribute ("attribute_unknown … not
+  defined in class …") **unless the event declares that profile** in
+  `metadata.profiles`. Declaring a profile also makes its required attributes
+  required. So emit a profile attribute only when the source carries that data,
+  and declare exactly the profiles whose attributes the event carries; when
+  those attributes are optional, compute `metadata.profiles` from what is
+  present. `validate-against-ocsf.sh` reads the event's `metadata.profiles` and
+  fails with **UNDECLARED PROFILE ATTRIBUTES** when a top-level profile
+  attribute is emitted without its profile.
 
 ### The hosted validator checks the server's default version
 
@@ -165,9 +179,12 @@ All scripts live in `scripts/`. Full procedure and triage guidance:
   Use `--slurp` only when the transform expects a whole JSON array as one value.
 - **`validate-against-ocsf.sh <transform.yaml> <input.json> <version> <class> [profiles]`**
   is the offline, version-pinned structural check: required and recommended
-  attributes of the class, plus unknown top-level keys. Exits non-zero on
-  missing required attributes. Profiles default to none; pass a comma-separated
-  list or `all`.
+  attributes of the class, unknown top-level keys, and undeclared profile
+  attributes. Profiles default to the event's own `metadata.profiles` (as the
+  hosted validator does); pass a comma-separated list or `all` to override.
+  Exits non-zero on missing required attributes or undeclared profile
+  attributes. For multi-event or multi-class output it checks the first event
+  of the requested class.
 - **`validate-ocsf-api.sh <transform.yaml> <input.json> [--slurp]`** POSTs the
   output to the official OCSF validator (`/api/v2/validate`, or
   `/api/v2/validate_bundle` for multiple events) and exits non-zero on any
@@ -183,6 +200,10 @@ All scripts live in `scripts/`. Full procedure and triage guidance:
   `finding_info`, and so on).
 - **`fetch-ocsf-schema.sh <version> [--force] | --list`** installs another
   schema version.
+- **`restore-profile-annotations.py <version> [--check]`** restores
+  per-attribute profile annotations in an installed bundle (run automatically
+  by `fetch-ocsf-schema.sh`; `--check` reports without writing). Needs
+  `python3` and network access.
 - **`jq-helpers.sh list | show <name>... | check <yaml>... | sync <yaml>... | test [yaml]`**
   manages the [standard jq helpers](#standard-jq-helpers): print them for
   pasting, detect and fix drift in transforms, and run their fixtures under jq

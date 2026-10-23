@@ -117,9 +117,21 @@ object's required attributes.
 
 ### 4. Profiles
 
-Some OCSF requirements are profile-scoped. The `cloud` profile, for instance,
-makes `cloud` a required top-level object. By default the validator does NOT
-enforce profile requirements (passing `[]`). To opt in:
+Some OCSF attributes are profile-scoped. The `cloud` profile, for instance,
+makes `cloud` a required top-level object; the `host` profile adds `device`;
+`security_control` adds `policy`, `action_id`, `disposition_id`, etc. By
+default the validator uses the profiles the event declares in
+`metadata.profiles` — the same set the hosted validator uses — enforces their
+required attributes, and reports:
+
+```
+UNDECLARED PROFILE ATTRIBUTES (add the profile to metadata.profiles or drop the attribute; validate2 rejects them):
+  - device (profile: host)
+```
+
+for any top-level profile attribute the event emits without declaring its
+profile. That is a failure: fix it by declaring the profile or dropping the
+attribute. To check against a different profile set:
 
 ```bash
 scripts/validate-against-ocsf.sh ... 1.1.0 authentication cloud,host
@@ -128,7 +140,9 @@ scripts/validate-against-ocsf.sh ... 1.1.0 authentication cloud,host
 Pass `all` to enforce every profile the class declares.
 
 A transform should only claim a profile if it can populate that profile's
-required fields from the source data.
+required fields from the source data. Nested objects can carry profile
+attributes too; the local check covers top-level attributes only, so the hosted
+validator remains the authority for nested ones.
 
 ### 5. Test multiple inputs
 

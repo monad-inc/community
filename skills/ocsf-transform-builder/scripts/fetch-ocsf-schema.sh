@@ -19,10 +19,16 @@
 # /export/schema endpoint fails for 1.6.0+), then normalized:
 #   - attribute arrays (some server versions) are folded into one object
 #   - extension classes/objects (e.g. Windows) are keyed "<ext>/<name>"
-#   - cloud/osint are restored as profile attributes; the class endpoint
-#     reports them as base-required on 1.8.0+, which they are not
+#   - profile attributes are annotated with their profile: on 1.8.0+ the class
+#     and object endpoints report every profile attribute (cloud, osint,
+#     device, policy, action_id, ...) as a base attribute. cloud/osint are
+#     fixed here; restore-profile-annotations.py (python3) then restores the
+#     rest by diffing each class/object fetched per profile.
 #
-# Requires: curl, jq. Makes roughly 300 HTTP requests; takes a minute or two.
+# Requires: curl, jq; python3 for the full profile restore (without it, 1.8.0+
+# bundles only have cloud/osint corrected and the validator's undeclared
+# profile attribute check is incomplete). Makes a few hundred HTTP requests,
+# plus about 1,500 for the profile restore; takes a few minutes.
 
 set -euo pipefail
 
@@ -130,6 +136,13 @@ jq '[ .classes | to_entries[] | {
 mkdir -p "$dest"
 mv "$tmp/schema.json" "$dest/schema.json"
 mv "$tmp/classes-index.json" "$dest/classes-index.json"
+if command -v python3 >/dev/null; then
+  echo "Restoring profile annotations ..." >&2
+  python3 "$here/restore-profile-annotations.py" "$version" >&2
+else
+  echo "WARNING: python3 not found; profile annotations beyond cloud/osint not restored." >&2
+  echo "         Run scripts/restore-profile-annotations.py $version once python3 is available." >&2
+fi
 printf 'Installed OCSF v%s: %s classes, %s objects -> %s\n' "$version" \
   "$(jq '.classes | length' "$dest/schema.json")" \
   "$(jq '.objects | length' "$dest/schema.json")" "$dest" >&2
