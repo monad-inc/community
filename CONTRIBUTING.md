@@ -1,8 +1,8 @@
 # Contributing
 
 Thanks for adding to the Monad Community repo. This guide covers contributing
-**scripts** (the `scripts/` directory); for blog assets, just add files under
-`blog/`.
+**scripts** (the `scripts/` directory) and **skills** for AI agents (the
+`skills/` directory); for blog assets, just add files under `blog/`.
 
 ## Adding a script
 
@@ -28,6 +28,30 @@ that documentation will not be merged.
 
 5. **Open a PR.** See the checklist below.
 
+## Adding a skill
+
+A skill is a directory under `skills/<name>/` that teaches an AI agent to do a
+Monad task. See [`skills/README.md`](skills/README.md) for the format.
+
+1. **Create `skills/<name>/SKILL.md`** with YAML frontmatter (`name`, matching
+   the directory, and a `description` that says what the skill does and when to
+   use it), then the instructions. Use a `kebab-case` name.
+2. **Keep it agent-neutral.** Don't name a specific model or agent product, its
+   tools, slash commands, or config files. Describe actions ("fetch the page",
+   "ask the user") and name the external tools the skill needs (`jq`, `curl`, the
+   Monad MCP server) in a **Requirements** section.
+3. **Keep it self-contained.** Put scripts in `scripts/`, supporting docs and data
+   in `references/`, and starting files in `templates/`, and link them with
+   relative paths. A skill must work when its directory is copied on its own.
+4. **No internal references or secrets.** Only public URLs, public repos, and
+   public docs. Credentials come from the user's environment or an OAuth flow,
+   never from the skill.
+5. **Keep bundled data small.** Ship what the common case needs and add a fetch
+   script for the rest (see `ocsf-transform-builder/scripts/fetch-ocsf-schema.sh`).
+6. **Register it** in the catalog table in [`skills/README.md`](skills/README.md).
+
+Scripts inside a skill follow the script conventions below.
+
 ## Conventions
 
 - **Secrets never get committed.** Read credentials from an environment variable
@@ -42,7 +66,8 @@ that documentation will not be merged.
 - **Document the Monad API surface** the script touches (endpoints, MCP tools, or
   connectors) and the API-key permissions required.
 - **Commits** follow [Conventional Commits](https://www.conventionalcommits.org/):
-  `feat(scripts): add <slug>`, `fix(scripts): …`, `docs(scripts): …`. Branch names
+  `feat(scripts): add <slug>`, `fix(scripts): …`, `docs(scripts): …`, and
+  `feat(skills): add <name>` for skills. Branch names
   mirror the type: `feat/<slug>`, `fix/<slug>`.
 
 ## PR checklist
@@ -53,3 +78,10 @@ that documentation will not be merged.
 - [ ] Usage examples included; a dry-run path exists for state-changing scripts.
 - [ ] Added a row to `scripts/README.md`.
 - [ ] Conventional Commit message and matching branch name.
+
+For a skill:
+
+- [ ] `skills/<name>/SKILL.md` has `name` and `description` frontmatter.
+- [ ] No model- or agent-product-specific wording, and no internal links.
+- [ ] Every relative link and script path in the skill resolves.
+- [ ] Added a row to `skills/README.md`.

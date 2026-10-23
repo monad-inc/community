@@ -1,0 +1,60 @@
+name: "CEF Serializer"
+description: "Shared, source-agnostic serializer that renders a normalized {_cef:{...}} intermediate into a CEF:0 message string. Chain it after any per-source cef/ mapping transform. Owns all CEF escaping, header assembly, and severity clamping so per-source transforms never touch escaping."
+author: "Monad"
+contributors:
+  - "https://github.com/kennethkaye"
+inputs: []
+tags:
+  - "v0"
+  - "cef"
+  - "serializer"
+  - "utility"
+config:
+  operations:
+    - operation: "jq"
+      arguments:
+        key: ""
+        query: |
+          # ============================================================
+          # CEF Serializer (T2) — {_cef:{...}} intermediate -> {message:"CEF:0|..."}
+          # Owns ALL CEF serialization: escaping, header assembly, severity
+          # clamp. Per-source mapping transforms (T1) emit final-form values
+          # under _cef and do NO escaping. See the ecs/ocsf skills' sibling
+          # docs; CEF spec: references/cef-format.md.
+          #
+          # Escaping (backslash FIRST):
+          #   header field: \ -> \\ , | -> \|            (= not escaped)
+          #   extension value: \ -> \\ , = -> \= , newlines -> \n / \r  (| not escaped)
+          # The `contains` guards short-circuit the regex engine on clean
+          # values (the overwhelmingly common case).
+          # ============================================================
+
+          def cef_esc_header:
+            tostring
+            | if (contains("\\") or contains("|"))
+              then gsub("\\\\"; "\\\\") | gsub("\\|"; "\\|")
+              else . end;
+
+          def cef_esc_ext:
+            tostring
+            | if (contains("\\") or contains("=") or contains("\n") or contains("\r"))
+              then gsub("\\\\"; "\\\\") | gsub("="; "\\=") | gsub("\n"; "\\n") | gsub("\r"; "\\r")
+              else . end;
+
+          def cef_sev($n):
+            if ($n | type) != "number" then 0
+            else ([[($n | floor), 0] | max, 10] | min) end;
+
+          def cef_ext($obj):
+            [ $obj | to_entries[]
+              | select(.value != null and .value != "")
+              | "\(.key)=\(.value | cef_esc_ext)" ]
+            | join(" ");
+
+          ._cef as $c
+          | { "message":
+              ( "CEF:0|"
+                + ([$c.vendor, $c.product, $c.version, $c.signature_id, $c.name]
+                   | map(cef_esc_header) | join("|"))
+                + "|" + (cef_sev($c.severity) | tostring)
+                + "|" + cef_ext($c.extension // {}) ) }
