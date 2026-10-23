@@ -1,25 +1,34 @@
 #!/usr/bin/env bash
 # Manage the standard jq helpers defined in this skill's SKILL.md
 # ("Standard jq helpers" section), for example to_epoch_ms, to_iso, is_ip,
-# prune (jq-helpers.sh list shows all). SKILL.md is the source of truth; transforms embed
-# copies between "# >>> helper: <name>" and "# <<< helper: <name>" marker lines.
+# prune (jq-helpers.sh list shows all). SKILL.md is the source of truth.
+#
+# Transforms match helpers by NAME: any top-level `def` of a helper name must
+# have the canonical body (compared after gojq normalization, so layout and
+# comments don't matter), and no transform may define a helper name with a
+# different number of arguments. The community-transformations repo enforces
+# this in CI with its own copy, helpers/helpers.jq, which `export` writes from
+# this skill.
 #
 # Usage:
-#   jq-helpers.sh list                      # helper names
-#   jq-helpers.sh show <name>...            # print helpers (with markers) for pasting
-#                                           # into a query; adds dependencies first
-#   jq-helpers.sh check <transform.yaml>... # report drift from SKILL.md (exit 1),
-#                                           # missing dependencies (exit 1), and
-#                                           # unmarked definitions of helper names (warning)
-#   jq-helpers.sh sync <transform.yaml>...  # rewrite drifted marked copies in place
-#                                           # from SKILL.md; unmarked definitions are
-#                                           # reported, never touched
-#   jq-helpers.sh test [transform.yaml]     # run references/jq-helper-fixtures.json
-#                                           # against SKILL.md's helpers (or the copies
-#                                           # embedded in a transform) under jq, and
-#                                           # gojq when on PATH or GOJQ is set
+#   jq-helpers.sh list                 # helper names
+#   jq-helpers.sh show <name>...       # print helpers for pasting into a query,
+#                                      # dependencies first
+#   jq-helpers.sh test                 # run references/jq-helper-fixtures.json under
+#                                      # jq, and gojq when on PATH or GOJQ is set
+#   jq-helpers.sh export [repo]        # write <repo>/helpers/helpers.jq and
+#                                      # helpers/tests.json from this skill
+#   jq-helpers.sh check [repo]         # fail if the repo's copies differ from this
+#                                      # skill, then run the repo's helper check
+#                                      # (every transform matches; tests pass)
+#   jq-helpers.sh sync [repo]          # export, then rewrite every drifted helper
+#                                      # copy in the repo's transforms
 #
-# Requires: bash, awk, jq; yq (mikefarah, v4) for check/test on a transform.
+# [repo] is a community-transformations checkout; it defaults to $REPO, then to
+# the clone managed by community-repo.sh. check and sync run the repo's
+# `go -C tools run ./cmd/helpers` tool, so they need Go.
+#
+# Requires: bash, awk, jq; Go for check and sync.
 
 set -euo pipefail
 
@@ -30,12 +39,14 @@ fixtures="$here/../references/jq-helper-fixtures.json"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
-# --- canonical helpers from SKILL.md -> $tmp/canon/<name>.jq (+ order file) ---
+# --- canonical helpers from SKILL.md -> $tmp/canon/<name>.jq (+ ORDER) ---
+# In SKILL.md each helper sits between "# >>> helper: <name>" and
+# "# <<< helper: <name>" lines; the markers delimit blocks there only.
 mkdir -p "$tmp/canon"
 awk -v dir="$tmp/canon" '
-  /^# >>> helper: / { name = $4; file = dir "/" name ".jq"; print name >> (dir "/ORDER"); }
+  /^# >>> helper: / { name = $4; file = dir "/" name ".jq"; print name >> (dir "/ORDER"); next }
+  /^# <<< helper: / { close(file); file = ""; next }
   file != ""        { print > file }
-  /^# <<< helper: / { close(file); file = "" }
 ' "$skill_md"
 [[ -s "$tmp/canon/ORDER" ]] || { echo "no helpers found in $skill_md" >&2; exit 65; }
 names="$(cat "$tmp/canon/ORDER")"
@@ -56,66 +67,71 @@ resolve() {
   done
 }
 
-# Print a transform's queries (all operations), dedented by yq.
-queries() { yq -r '.config.operations[].arguments.query // ""' "$1"; }
-
-# Extract the embedded marked copy of helper $2 from query text file $1.
-embedded() {
-  awk -v n="$2" '
-    $0 ~ "^[[:blank:]]*# >>> helper: " n "[[:blank:]]*$" { p = 1 }
-    p { sub(/^[[:blank:]]+/, ""); print }
-    $0 ~ "^[[:blank:]]*# <<< helper: " n "[[:blank:]]*$" { p = 0 }
-  ' "$1"
+# How to call each top-level def of helper $1 with input value $x:
+# prints one "<arity> <name>" line per def ("def f($a; $b)" -> 2, "def f($a)" -> 1, "def f:" -> 0).
+arities() {
+  awk -v n="$1" '
+    $0 ~ "^def " n "\\(" { a = $0; sub(/\).*/, "", a); print gsub(/;/, ";", a) + 1; next }
+    $0 ~ "^def " n ":"   { print 0 }
+  ' "$tmp/canon/$1.jq"
 }
 
-# Same, from the canonical copy, with leading whitespace stripped for comparison.
-canon_flat() { sed 's/^[[:blank:]]*//' "$tmp/canon/$1.jq"; }
+repo_dir() {
+  local r="${1:-${REPO:-}}"
+  [[ -n "$r" ]] || r="$("$here/community-repo.sh" path)"
+  [[ -f "$r/helpers/helpers.jq" && -d "$r/tools/cmd/helpers" ]] || {
+    echo "not a community-transformations checkout with helper tooling: $r" >&2
+    echo "(expected helpers/helpers.jq and tools/cmd/helpers; set REPO or pass the path)" >&2
+    exit 66
+  }
+  (cd "$r" && pwd)
+}
 
-check_one() {  # $1 = transform; prints findings; returns 1 on drift/missing dep
-  local t="$1" q="$tmp/q.jq" rc=0 n d present="" stripped
-  queries "$t" > "$q"
-  for n in $names; do
-    if grep -Eq "^[[:blank:]]*# >>> helper: $n[[:blank:]]*$" "$q"; then
-      present="$present $n"
-      if ! diff -q <(canon_flat "$n") <(embedded "$q" "$n") >/dev/null; then
-        echo "  DRIFT       $n (run: jq-helpers.sh sync $t)"; rc=1
-      fi
-    fi
-  done
-  for n in $present; do
-    for d in $(deps_of "$n"); do
-      case " $present " in *" $d "*) ;; *) echo "  MISSING-DEP $n requires $d"; rc=1 ;; esac
+# Write helpers.jq and tests.json for the repo into directory $1.
+render_repo_files() {
+  local out="$1" n first=1
+  {
+    cat <<'EOF'
+# Canonical jq helpers for community transformations.
+#
+# jq has no shared library mechanism in the Monad jq operation, so each
+# transform carries its own copy of the helpers it uses. A transform that
+# defines a top-level function with one of the names below must use the
+# exact body from this file (compared after gojq normalization, so layout and
+# comments don't matter). `go -C tools run ./cmd/helpers sync` rewrites
+# drifted copies and `go -C tools run ./cmd/helpers check` fails when a copy
+# differs or a transform defines one of these names with a different arity.
+#
+# Source of truth: the "Standard jq helpers" section of the transform builder
+# skills in monad-inc/community (skills/*-transform-builder/SKILL.md). Do not
+# edit this file by hand: change the skill, then run its
+# `scripts/jq-helpers.sh export <this repo>` to regenerate this file and
+# helpers/tests.json, run sync, and review the transform diffs in one PR.
+#
+# A "# requires: <name>" line in a helper's header names another helper it
+# calls; sync inserts the dependency ahead of the helper when a transform
+# lacks it.
+EOF
+    for n in $names; do
+      echo
+      cat "$tmp/canon/$n.jq"
     done
-  done
-  # Unmarked definitions: strip marked blocks, then look for "def <name>".
-  stripped="$(awk '/^[[:blank:]]*# >>> helper: /{p=1} !p{print} /^[[:blank:]]*# <<< helper: /{p=0}' "$q")"
-  for n in $names; do
-    if printf '%s\n' "$stripped" | grep -Eq "(^|[^A-Za-z0-9_])def[[:blank:]]+$n[[:blank:]]*[(:]"; then
-      echo "  UNMANAGED   $n is defined without markers (replace it with: jq-helpers.sh show $n)"
-    fi
-  done
-  return "$rc"
-}
+  } > "$out/helpers.jq"
 
-# Replace marked block $2 in YAML file $1 (in place) with the canonical copy,
-# keeping the block's indentation. Leaves the file untouched on error.
-replace_block() {
-  local f="$1" n="$2" out="$tmp/out.yaml"
-  if ! awk -v n="$n" -v canon="$tmp/canon/$n.jq" '
-      BEGIN { while ((getline l < canon) > 0) c[++k] = l }
-      !skip && $0 ~ "^[[:blank:]]*# >>> helper: " n "[[:blank:]]*$" {
-        ind = $0; sub(/#.*/, "", ind)
-        for (i = 1; i <= k; i++) print (c[i] == "" ? "" : ind c[i])
-        skip = 1; next
-      }
-      skip { if ($0 ~ "^[[:blank:]]*# <<< helper: " n "[[:blank:]]*$") skip = 0; next }
-      { print }
-      END { if (skip) exit 3 }
-    ' "$f" > "$out"; then
-    echo "  ERROR       $n: unterminated marker block in $f; not changed" >&2
-    return 1
-  fi
-  cat "$out" > "$f"
+  # tests.json: one suite per helper def, cases from the skill fixtures.
+  {
+    for n in $names; do
+      for a in $(arities "$n"); do
+        case "$a" in
+          0) q="$n" ;;
+          1) q="$n(.)" ;;
+          2) q="$n(.[0]; .[1])" ;;
+          *) echo "unsupported arity $a for $n" >&2; exit 65 ;;
+        esac
+        jq -c --arg n "$n" --arg q "$q" '{query: $q, cases: [.[$n][] | {in, out: .want}]}' "$fixtures"
+      done
+    done
+  } | jq -s . > "$out/tests.json"
 }
 
 cmd="${1:-}"; [[ $# -gt 0 ]] && shift
@@ -133,88 +149,74 @@ case "$cmd" in
     done
     ;;
 
+  export)
+    r="$(repo_dir "${1:-}")"
+    render_repo_files "$tmp"
+    cp "$tmp/helpers.jq" "$r/helpers/helpers.jq"
+    cp "$tmp/tests.json" "$r/helpers/tests.json"
+    echo "wrote $r/helpers/helpers.jq and $r/helpers/tests.json"
+    ;;
+
   check)
-    [[ $# -ge 1 ]] || { echo "usage: jq-helpers.sh check <transform.yaml>..." >&2; exit 64; }
-    command -v yq >/dev/null || { echo "yq (mikefarah) required" >&2; exit 69; }
+    r="$(repo_dir "${1:-}")"
+    command -v go >/dev/null || { echo "go required (the repo's helper tool is Go)" >&2; exit 69; }
+    render_repo_files "$tmp"
     status=0
-    for t in "$@"; do
-      out="$(check_one "$t")" || status=1
-      [[ -n "$out" ]] && { echo "$t"; echo "$out"; }
+    for f in helpers.jq tests.json; do
+      if ! cmp -s "$tmp/$f" "$r/helpers/$f"; then
+        echo "$r/helpers/$f differs from this skill (run: jq-helpers.sh export $r)"
+        status=1
+      fi
     done
-    [[ $status == 0 ]] && echo "jq helpers: no drift in $# file(s)."
+    go -C "$r/tools" run ./cmd/helpers check || status=1
     exit "$status"
     ;;
 
   sync)
-    [[ $# -ge 1 ]] || { echo "usage: jq-helpers.sh sync <transform.yaml>..." >&2; exit 64; }
-    command -v yq >/dev/null || { echo "yq (mikefarah) required" >&2; exit 69; }
-    changed=0; status=0
-    for t in "$@"; do
-      q="$tmp/q.jq"; queries "$t" > "$q"
-      for n in $names; do
-        grep -Eq "^[[:blank:]]*# >>> helper: $n[[:blank:]]*$" "$q" || continue
-        diff -q <(canon_flat "$n") <(embedded "$q" "$n") >/dev/null && continue
-        if replace_block "$t" "$n"; then echo "updated $n in $t"; changed=$((changed + 1)); else status=1; fi
-      done
-      out="$(check_one "$t" | grep -v DRIFT || true)"
-      [[ -n "$out" ]] && { echo "$t"; echo "$out"; }
-    done
-    echo "jq helpers: $changed block(s) updated."
-    exit "$status"
+    r="$(repo_dir "${1:-}")"
+    command -v go >/dev/null || { echo "go required (the repo's helper tool is Go)" >&2; exit 69; }
+    "$0" export "$r"
+    go -C "$r/tools" run ./cmd/helpers sync
     ;;
 
   test)
     command -v jq >/dev/null || { echo "jq required" >&2; exit 69; }
-    lib="$tmp/lib.jq"
-    if [[ $# -ge 1 ]]; then
-      command -v yq >/dev/null || { echo "yq (mikefarah) required" >&2; exit 69; }
-      queries "$1" > "$tmp/q.jq"
-      : > "$lib"
-      for n in $names; do embedded "$tmp/q.jq" "$n" >> "$lib"; done
-      [[ -s "$lib" ]] || { echo "no marked helpers in $1" >&2; exit 1; }
-      check_one "$1" || true
-    else
-      for n in $names; do cat "$tmp/canon/$n.jq"; done > "$lib"
-    fi
-    tested="$(sed -n 's/^# >>> helper: //p' "$lib" | tr '\n' ' ')"
-    # Every helper present must have fixtures.
-    for n in $tested; do
+    for n in $names; do
       jq -e --arg n "$n" 'has($n)' "$fixtures" >/dev/null || { echo "no fixtures for $n in $fixtures" >&2; exit 65; }
     done
-    # Dispatcher over the helpers present: "def f($a; $b)" is called as
-    # f($x[0]; $x[1]) (fixture input is a two-item array), "def f($x)" as
-    # f($x), and a filter "def f:" as ($x | f).
+    # Dispatcher: every def of every helper is exercised with that helper's
+    # fixtures. Two-argument defs take a two-item array as input.
     {
-      cat "$lib"
-      echo 'def call($h; $x):'
+      for n in $names; do cat "$tmp/canon/$n.jq"; done
+      echo 'def call($h; $a; $x):'
       kw="if"
-      for n in $tested; do
-        if grep -Eq "^[[:blank:]]*def $n\([^;)]*;" "$lib"; then
-          echo "  $kw \$h == \"$n\" then $n(\$x[0]; \$x[1])"
-        elif grep -Eq "^[[:blank:]]*def $n\(" "$lib"; then
-          echo "  $kw \$h == \"$n\" then $n(\$x)"
-        else
-          echo "  $kw \$h == \"$n\" then (\$x | $n)"
-        fi
-        kw="elif"
+      for n in $names; do
+        for a in $(arities "$n"); do
+          case "$a" in
+            0) e="(\$x | $n)" ;;
+            1) e="$n(\$x)" ;;
+            2) e="$n(\$x[0]; \$x[1])" ;;
+          esac
+          echo "  $kw \$h == \"$n\" and \$a == $a then $e"
+          kw="elif"
+        done
       done
-      echo '  else error("no dispatcher for helper \($h)") end;'
+      echo '  else error("no dispatcher for helper \($h)/\($a)") end;'
+      echo '$arities[] as [$h, $a] | .[$h][] | . as $c'
       cat <<'EOF'
-to_entries[] | select(.key | IN($tested[])) | .key as $h | .value[]
-| . as $c
-| (try call($h; $c.in) catch "ERROR: \(.)") as $got
+| (try call($h; $a; $c.in) catch "ERROR: \(.)") as $got
 | if $got == $c.want then "ok"
-  else "FAIL\t\($h)\t\($c.name)\tinput=\($c.in | tojson)\twant=\($c.want | tojson)\tgot=\($got | tojson)" end
+  else "FAIL\t\($h)/\($a)\t\($c.name)\tinput=\($c.in | tojson)\twant=\($c.want | tojson)\tgot=\($got | tojson)" end
 EOF
     } > "$tmp/test.jq"
-    tested_json="$(printf '%s\n' $tested | jq -R . | jq -sc .)"
+    arities_json="$(for n in $names; do for a in $(arities "$n"); do printf '["%s",%s]\n' "$n" "$a"; done; done | jq -sc .)"
     run() {
       local engine="$1" out total fails
-      out="$("$engine" -r --argjson tested "$tested_json" -f "$tmp/test.jq" "$fixtures" 2>&1)" \
+      out="$("$engine" -r --argjson arities "$arities_json" -f "$tmp/test.jq" "$fixtures" 2>&1)" \
         || { echo "$(basename "$engine"): failed to run"; printf '%s\n' "$out" | sed 's/^/  /'; return 1; }
       total="$(printf '%s\n' "$out" | wc -l | tr -d ' ')"
       fails="$(printf '%s\n' "$out" | grep -c '^FAIL' || true)"
-      printf '%s: %s/%s fixtures pass (%s)\n' "$(basename "$engine")" "$((total - fails))" "$total" "${tested% }"
+      printf '%s: %s/%s fixture runs pass\n' "$(basename "$engine")" "$((total - fails))" "$total"
       printf '%s\n' "$out" | grep '^FAIL' | sed 's/^/  /' || true
       [[ "$fails" == "0" ]]
     }
@@ -230,7 +232,7 @@ EOF
     ;;
 
   *)
-    sed -n '2,24p' "$0" >&2
+    sed -n '2,31p' "$0" >&2
     exit 64
     ;;
 esac

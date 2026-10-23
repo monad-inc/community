@@ -157,7 +157,7 @@ handles a value the same way regardless of the source.
 | `cef_sev($s)` | CEF severity (0–10) from a label or a 0–10 number, in the CEF spec's buckets (`info` 1, `low` 3, `medium` 5, `high` 7, `critical` 9, `fatal` 10). `null` for empty, `unknown`, or unrecognized input; map vendor scales explicitly. |
 | `truthy($v)` | `true` for a real boolean `true` or the string `"true"` in any case. |
 | `is_ip($s)` | `true` only for a valid IPv4 or IPv6 address (no port, zone, or CIDR). Guard every `ip`-typed field: `(if is_ip($v) then $v else null end)`. |
-| `json_str($v)` | JSON string of a nested value; strings pass through; `null`, `{}`, `[]` give `null`. For vendor blobs that would explode a downstream index mapping. |
+| `json_str($v)` (or `… \| json_str`) | JSON string of a nested value; strings pass through; `null`, `{}`, `[]` give `null`. For vendor blobs that would explode a downstream index mapping. |
 | `present_unique($arr)` | Sorted unique values with `null` and `""` removed, flattening one level of nested arrays; for ECS `related.*`. `[]` when empty. |
 | `prune` | Recursively drops `null`, `{}`, and `[]`; keeps `""`, `0`, `false`. Apply once, at the end. |
 | `prune_blank` | `prune` that also drops `""`. Use instead of `prune` when the source sends empty strings for absent values. |
@@ -165,24 +165,28 @@ handles a value the same way regardless of the source.
 Rules:
 
 1. **Copy, don't write.** Get the definitions with
-   `scripts/jq-helpers.sh show <name>...`, which prints them with their marker
-   comments and adds dependencies (`to_iso` pulls in `to_epoch_ms`) in the
-   right order. Paste them at the top of the jq query, before any use, and
-   include only the helpers the transform calls.
-2. **Never edit an embedded copy, and never define these names any other way.**
-   Need different behavior? Change this section (see 4) or write a helper with
-   a different name.
-3. **Keep the markers.** `# >>> helper: <name>` / `# <<< helper: <name>` let
-   `scripts/jq-helpers.sh check <transform.yaml>...` detect drift and
-   `scripts/jq-helpers.sh sync <transform.yaml>...` rewrite embedded copies from
-   this section. The validators run `check` and warn on drift or on an unmarked
-   definition of one of these names.
+   `scripts/jq-helpers.sh show <name>...`, which also adds dependencies
+   (`to_iso` pulls in `to_epoch_ms`) in the right order. Paste them at the top
+   of the jq query, before any use, and include only the helpers the transform
+   calls.
+2. **Helpers are matched by name.** Any top-level `def` of one of these names
+   must have exactly the body below (layout and comments don't matter), and no
+   transform may define one of these names with a different number of
+   arguments. Need different behavior? Change this section (see 4) or give the
+   local function a different name.
+3. **The repo enforces it.** community-transformations keeps a generated copy
+   of these helpers in `helpers/helpers.jq`, and its CI fails a pull request
+   with a drifted copy. `scripts/jq-helpers.sh check` runs the same check
+   locally, and the validators report findings for the transform you're
+   working on (both need Go). The `# >>> helper:` / `# <<< helper:` lines in
+   the block below only delimit helpers inside this file; transforms don't
+   carry them.
 4. **Changing a helper:** edit the block below identically in all three skills'
-   `SKILL.md`, add or update cases in `references/jq-helper-fixtures.json`, run
-   `scripts/jq-helpers.sh test` (jq, and gojq, the jq implementation Monad uses,
-   when installed), then run `scripts/jq-helpers.sh sync` over the repo's
-   transforms (`find "$REPO" -name '*.yaml'`), review the diff, and open one pull
-   request for the propagation.
+   `SKILL.md`, add or update cases in `references/jq-helper-fixtures.json`, and
+   run `scripts/jq-helpers.sh test` (jq, and gojq, the jq implementation Monad
+   uses, when installed). Then run `scripts/jq-helpers.sh sync "$REPO"`, which
+   regenerates the repo's `helpers/helpers.jq` and `helpers/tests.json` and
+   rewrites every transform's copy, and open one pull request with the result.
 
 ```jq
 # >>> helper: to_epoch_ms
@@ -425,10 +429,12 @@ def is_ip($s):
 # Serialize a nested value to a JSON string (to keep vendor blobs from
 # exploding a downstream index mapping). Strings pass through unchanged;
 # null, {} and [] give null.
+# Also usable as a filter: `.x | json_str`.
 def json_str($v):
   if $v == null or $v == {} or $v == [] then null
   elif ($v | type) == "string" then $v
   else ($v | tojson) end;
+def json_str: json_str(.);
 # <<< helper: json_str
 
 # >>> helper: present_unique
@@ -491,10 +497,12 @@ Path: `ecs/v<version>/<vendor>/<input-slug>[-<variant>].yaml`.
   field's type, level, normalize, allowed values, and description; a field set
   lists its fields; `--list` enumerates field sets.
 - `scripts/fetch-ecs-schema.sh <version> [--force]` installs another ECS version.
-- `scripts/jq-helpers.sh list | show <name>... | check <yaml>... | sync <yaml>... | test [yaml]`
+- `scripts/jq-helpers.sh list | show <name>... | test | export [repo] | check [repo] | sync [repo]`
   manages the [standard jq helpers](#standard-jq-helpers): print them for
-  pasting, detect and fix drift in transforms, and run their fixtures under jq
-  and gojq. `validate-against-ecs.sh` runs `check` and prints its findings.
+  pasting, run their fixtures under jq and gojq, write the repo's
+  `helpers/helpers.jq` and `helpers/tests.json`, and check or fix every
+  transform's copies with the repo's own tool (Go). `validate-against-ecs.sh`
+  prints the repo check's findings for the transform it validates.
 
 ## Workflow: writing a new transform
 

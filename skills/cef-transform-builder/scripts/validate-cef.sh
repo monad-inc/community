@@ -16,6 +16,20 @@
 
 set -euo pipefail
 
+# Standard jq helper findings for one transform (see SKILL.md "Standard jq
+# helpers"), from the community-transformations repo's own helper check. Prints
+# nothing when clean, or SKIPPED when Go or the repo tool is unavailable.
+helper_findings() {
+  local t="$1" root abs
+  root="$(cd "$(dirname "$t")" && git rev-parse --show-toplevel 2>/dev/null || true)"
+  if [[ -z "$root" || ! -d "$root/tools/cmd/helpers" ]] || ! command -v go >/dev/null; then
+    echo "SKIPPED (needs Go and a community-transformations checkout with tools/cmd/helpers)"
+    return
+  fi
+  abs="$(cd "$(dirname "$t")" && pwd -P)/$(basename "$t")"
+  go -C "$root/tools" run ./cmd/helpers check 2>&1 | grep -F "${abs#"$root"/}:" || true
+}
+
 here="$(cd "$(dirname "$0")" && pwd)"
 serializer="$here/../templates/cef-serializer.yaml"
 dict="$here/../references/cef-extension-dictionary.json"
@@ -70,13 +84,12 @@ else
 
   inter="$("$here/run-transform.sh" "$transform" "$input" | jq 'if type == "array" then .[0] else . end')"
 
-  # Standard jq helpers: drift, missing dependencies, and unmarked definitions
-  # (see SKILL.md "Standard jq helpers"), plus hand-rolled time parsing.
-  helper_warns="$("$here/jq-helpers.sh" check "$transform" 2>&1 \
-    | grep -E 'DRIFT|MISSING-DEP|UNMANAGED|ERROR' | sed 's/^[[:blank:]]*//' | jq -R . | jq -sc . || true)"
+  # Standard jq helper findings (see SKILL.md "Standard jq helpers"), plus
+  # hand-rolled time parsing.
+  helper_warns="$(helper_findings "$transform" | grep -v '^SKIPPED' | jq -R . | jq -sc . || true)"
   [[ -n "$helper_warns" ]] || helper_warns='[]'
   query="$(yq -r '.config.operations[].arguments.query' "$transform")"
-  if ! printf '%s\n' "$query" | grep -q '# >>> helper: to_epoch_ms' \
+  if ! printf '%s\n' "$query" | grep -qE '^[[:blank:]]*def to_epoch_ms\(' \
      && printf '%s\n' "$query" | grep -qE 'fromdateiso8601|fromdate|strptime|mktime|dateadd|datesub'; then
     helper_warns="$(jq -c '. + ["mapping parses time itself; use the standard to_epoch_ms helper (jq-helpers.sh show to_epoch_ms)"]' <<<"$helper_warns")"
   fi

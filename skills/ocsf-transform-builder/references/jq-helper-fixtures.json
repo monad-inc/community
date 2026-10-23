@@ -346,6 +346,133 @@
     "foo": 1
    },
    "want": null
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 3)",
+   "in": "garbage",
+   "want": null
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 5)",
+   "in": 1760436000,
+   "want": 1760436000000
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 6)",
+   "in": 1760436000.5,
+   "want": 1760436000500
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 7)",
+   "in": 1760436000123,
+   "want": 1760436000123
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 8)",
+   "in": 1760436000123456,
+   "want": 1760436000123
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 9)",
+   "in": 1760436000123456789,
+   "want": 1760436000123
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 10)",
+   "in": "1760436000",
+   "want": 1760436000000
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 11)",
+   "in": "1760436000.25",
+   "want": 1760436000250
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 12)",
+   "in": {
+    "seconds": 1760436000,
+    "nanos": 500000000
+   },
+   "want": 1760436000500
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 13)",
+   "in": {
+    "seconds": 1760436000
+   },
+   "want": 1760436000000
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 14)",
+   "in": {
+    "nanos": 5
+   },
+   "want": null
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 15)",
+   "in": "2026-10-14",
+   "want": 1791936000000
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 16)",
+   "in": "2026-10-14T10:00",
+   "want": 1791972000000
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 17)",
+   "in": "2026-10-14T10:00:00Z",
+   "want": 1791972000000
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 18)",
+   "in": "2026-10-14T10:00:00.1Z",
+   "want": 1791972000100
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 19)",
+   "in": "2026-10-14T10:00:00.123456789Z",
+   "want": 1791972000123
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 20)",
+   "in": "2026-10-14 10:00:00,5",
+   "want": 1791972000500
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 21)",
+   "in": "2026-10-14T10:00:00+00:00",
+   "want": 1791972000000
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 22)",
+   "in": "2026-10-14T10:00:00+0000",
+   "want": 1791972000000
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 23)",
+   "in": "2026-10-14T10:00:00-06:00",
+   "want": 1791993600000
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 24)",
+   "in": "2026-10-14T10:00:00+05:30",
+   "want": 1791952200000
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 25)",
+   "in": "2026-10-14T10:00:00+05",
+   "want": 1791954000000
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 26)",
+   "in": "2026-10-14t10:00:00z",
+   "want": 1791972000000
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 27)",
+   "in": "2026-10-14T10:00:00 UTC",
+   "want": 1791972000000
   }
  ],
  "to_iso": [
@@ -406,6 +533,54 @@
    "name": "syslog without year",
    "in": "Oct 20 13:04:05",
    "want": null
+  },
+  {
+   "name": "from community-transformations #41 (to_iso(.) case 2)",
+   "in": "",
+   "want": null
+  },
+  {
+   "name": "from community-transformations #41 (to_iso(.) case 3)",
+   "in": "garbage",
+   "want": null
+  },
+  {
+   "name": "from community-transformations #41 (to_iso(.) case 4)",
+   "in": 1760436000,
+   "want": "2025-10-14T10:00:00.000Z"
+  },
+  {
+   "name": "from community-transformations #41 (to_iso(.) case 5)",
+   "in": 1760436000123,
+   "want": "2025-10-14T10:00:00.123Z"
+  },
+  {
+   "name": "from community-transformations #41 (to_iso(.) case 6)",
+   "in": {
+    "seconds": 1760436000,
+    "nanos": 7000000
+   },
+   "want": "2025-10-14T10:00:00.007Z"
+  },
+  {
+   "name": "from community-transformations #41 (to_iso(.) case 7)",
+   "in": "2026-10-14",
+   "want": "2026-10-14T00:00:00.000Z"
+  },
+  {
+   "name": "from community-transformations #41 (to_iso(.) case 8)",
+   "in": "2026-10-14T10:00:00Z",
+   "want": "2026-10-14T10:00:00.000Z"
+  },
+  {
+   "name": "from community-transformations #41 (to_iso(.) case 9)",
+   "in": "2026-10-14T10:00:00.5-06:00",
+   "want": "2026-10-14T16:00:00.500Z"
+  },
+  {
+   "name": "from community-transformations #41 (to_iso(.) case 10)",
+   "in": "2026-10-14T10:00:00.123456Z",
+   "want": "2026-10-14T10:00:00.123Z"
   }
  ],
  "sev_caption": [
@@ -463,6 +638,11 @@
    "name": "null",
    "in": null,
    "want": null
+  },
+  {
+   "name": "from community-transformations #41 (sev_caption(.) case 3)",
+   "in": "2",
+   "want": "Low"
   }
  ],
  "sev_to_id": [
@@ -1199,6 +1379,56 @@
    "name": "number",
    "in": 1234,
    "want": false
+  },
+  {
+   "name": "from community-transformations #41 (is_ip(.) case 1)",
+   "in": "1.2.3.4",
+   "want": true
+  },
+  {
+   "name": "from community-transformations #41 (is_ip(.) case 9)",
+   "in": "fe80::1",
+   "want": true
+  },
+  {
+   "name": "from community-transformations #41 (is_ip(.) case 10)",
+   "in": "2001:db8::ffff:1.2.3.4",
+   "want": true
+  },
+  {
+   "name": "from community-transformations #41 (is_ip(.) case 11)",
+   "in": "1:2:3:4:5:6:7:8",
+   "want": true
+  },
+  {
+   "name": "from community-transformations #41 (is_ip(.) case 15)",
+   "in": ":1",
+   "want": false
+  },
+  {
+   "name": "from community-transformations #41 (is_ip(.) case 16)",
+   "in": "host:443",
+   "want": false
+  },
+  {
+   "name": "from community-transformations #41 (is_ip(.) case 17)",
+   "in": "1.2.3.4:443",
+   "want": false
+  },
+  {
+   "name": "from community-transformations #41 (is_ip(.) case 18)",
+   "in": "10:00:00",
+   "want": false
+  },
+  {
+   "name": "from community-transformations #41 (is_ip(.) case 19)",
+   "in": "aa:bb:cc:dd:ee:ff",
+   "want": false
+  },
+  {
+   "name": "from community-transformations #41 (is_ip(.) case 22)",
+   "in": 5,
+   "want": false
   }
  ],
  "json_str": [
@@ -1250,6 +1480,36 @@
    "name": "empty array",
    "in": [],
    "want": null
+  },
+  {
+   "name": "from community-transformations #41 (json_str(.) case 4)",
+   "in": "abc",
+   "want": "abc"
+  },
+  {
+   "name": "from community-transformations #41 (json_str(.) case 5)",
+   "in": {
+    "a": 1
+   },
+   "want": "{\"a\":1}"
+  },
+  {
+   "name": "from community-transformations #41 (json_str(.) case 6)",
+   "in": [
+    1,
+    2
+   ],
+   "want": "[1,2]"
+  },
+  {
+   "name": "from community-transformations #41 (json_str(.) case 7)",
+   "in": 3,
+   "want": "3"
+  },
+  {
+   "name": "from community-transformations #41 (json_str(.) case 8)",
+   "in": true,
+   "want": "true"
   }
  ],
  "present_unique": [
@@ -1390,6 +1650,33 @@
    "name": "scalar passes through",
    "in": "x",
    "want": "x"
+  },
+  {
+   "name": "from community-transformations #41 (prune case 1)",
+   "in": {
+    "a": null,
+    "b": "",
+    "c": {},
+    "d": [],
+    "e": [
+     null,
+     1,
+     {}
+    ],
+    "f": {
+     "g": null
+    },
+    "h": 0,
+    "i": false
+   },
+   "want": {
+    "b": "",
+    "e": [
+     1
+    ],
+    "h": 0,
+    "i": false
+   }
   }
  ],
  "prune_blank": [
@@ -1452,6 +1739,32 @@
    },
    "want": {
     "a": " "
+   }
+  },
+  {
+   "name": "from community-transformations #41 (prune_blank case 1)",
+   "in": {
+    "a": null,
+    "b": "",
+    "c": {},
+    "d": [],
+    "e": [
+     null,
+     1,
+     ""
+    ],
+    "f": {
+     "g": ""
+    },
+    "h": 0,
+    "i": false
+   },
+   "want": {
+    "e": [
+     1
+    ],
+    "h": 0,
+    "i": false
    }
   }
  ]

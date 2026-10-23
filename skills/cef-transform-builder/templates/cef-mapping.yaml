@@ -32,7 +32,6 @@ config:
           # ---------------------------------------------------------------
           # Standard helpers (SKILL.md "Standard jq helpers"). Paste with
           # scripts/jq-helpers.sh show <name>...; never edit these copies.
-          # >>> helper: to_epoch_ms
           # Epoch MILLISECONDS from any common timestamp form; null if empty or unparseable.
           def to_epoch_ms($ts):
             def _n: if . == null then null else tonumber end;
@@ -117,9 +116,7 @@ config:
                 + ((($ts.nanos // 0) | tostring | tonumber) / 1000000 | floor)
               else null end
             else null end;
-          # <<< helper: to_epoch_ms
 
-          # >>> helper: cef_sev
           # CEF severity (integer 0-10) from a label (case-insensitive) or a 0-10
           # number (floored and clamped). Buckets follow the CEF spec: Low 0-3,
           # Medium 4-6, High 7-8, Very-High 9-10. null for null, empty, "unknown", or
@@ -140,9 +137,7 @@ config:
                    "fatal":10,"emergency":10,"emerg":10}[$l]
                 end
             end;
-          # <<< helper: cef_sev
 
-          # >>> helper: is_ip
           # True only for a valid IPv4 or IPv6 address string (no port, no zone, no
           # CIDR). Guard every ip-typed field with it.
           def is_ip($s):
@@ -163,7 +158,6 @@ config:
                   end
               end;
             ($s | type) == "string" and ($s | _v4 or _v6);
-          # <<< helper: is_ip
           { _cef: {
               vendor: "<Vendor>",
               product: "<Product>",

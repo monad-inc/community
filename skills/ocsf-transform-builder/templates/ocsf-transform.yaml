@@ -26,7 +26,6 @@ config:
 
           # Standard helpers (SKILL.md "Standard jq helpers"). Paste with
           # scripts/jq-helpers.sh show <name>...; never edit these copies.
-          # >>> helper: to_epoch_ms
           # Epoch MILLISECONDS from any common timestamp form; null if empty or unparseable.
           def to_epoch_ms($ts):
             def _n: if . == null then null else tonumber end;
@@ -111,15 +110,12 @@ config:
                 + ((($ts.nanos // 0) | tostring | tonumber) / 1000000 | floor)
               else null end
             else null end;
-          # <<< helper: to_epoch_ms
 
-          # >>> helper: sev_caption
           # OCSF severity caption for a severity_id (identical in OCSF 1.0.0-1.9.0);
           # null for ids outside the enum. For 99 (Other), prefer the source's own label.
           def sev_caption($id):
             {"0":"Unknown","1":"Informational","2":"Low","3":"Medium","4":"High",
              "5":"Critical","6":"Fatal","99":"Other"}[$id | tostring];
-          # <<< helper: sev_caption
 
           {
             # --- Classification (REQUIRED for every OCSF event) ---

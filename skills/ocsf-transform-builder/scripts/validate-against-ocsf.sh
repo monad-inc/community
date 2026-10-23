@@ -24,6 +24,20 @@
 
 set -euo pipefail
 
+# Standard jq helper findings for one transform (see SKILL.md "Standard jq
+# helpers"), from the community-transformations repo's own helper check. Prints
+# nothing when clean, or SKIPPED when Go or the repo tool is unavailable.
+helper_findings() {
+  local t="$1" root abs
+  root="$(cd "$(dirname "$t")" && git rev-parse --show-toplevel 2>/dev/null || true)"
+  if [[ -z "$root" || ! -d "$root/tools/cmd/helpers" ]] || ! command -v go >/dev/null; then
+    echo "SKIPPED (needs Go and a community-transformations checkout with tools/cmd/helpers)"
+    return
+  fi
+  abs="$(cd "$(dirname "$t")" && pwd -P)/$(basename "$t")"
+  go -C "$root/tools" run ./cmd/helpers check 2>&1 | grep -F "${abs#"$root"/}:" || true
+}
+
 if [[ $# -lt 4 ]]; then
   sed -n '2,20p' "$0" >&2
   exit 64
@@ -143,13 +157,15 @@ else
   printf 'UNDECLARED PROFILE ATTRIBUTES: none\n'
 fi
 
-# Standard jq helper drift (warning only; see SKILL.md "Standard jq helpers").
+# Standard jq helper findings (warning only).
 echo
-helper_findings=$("$here/jq-helpers.sh" check "$transform" 2>&1 | grep -E 'DRIFT|MISSING-DEP|UNMANAGED|ERROR' || true)
-if [[ -n "$helper_findings" ]]; then
-  printf 'JQ HELPERS (warning):\n%s\n' "$helper_findings"
+helper_out="$(helper_findings "$transform")"
+if [[ "$helper_out" == SKIPPED* ]]; then
+  printf 'JQ HELPERS: %s\n' "$helper_out"
+elif [[ -n "$helper_out" ]]; then
+  printf 'JQ HELPERS (warning):\n%s\n' "$(printf '%s\n' "$helper_out" | sed 's/^/  - /')"
 else
-  printf 'JQ HELPERS: no drift\n'
+  printf 'JQ HELPERS: no findings\n'
 fi
 
 # Exit non-zero if required fields are missing or profile attributes are
