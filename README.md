@@ -11,6 +11,7 @@ This repo contains a variety of public assets aimed at enhancing understanding a
 - **Log Samples**: Real-world before-and-after examples of log transformations, such as flattening, masking, and filtering.
 - **Code Snippets**: Ready-to-use scripts and configurations to help you implement and optimize your data pipelines. See [`scripts/`](scripts/).
 - **Transformation Examples**: JSON examples to showcase how data can be cleaned, normalized, and structured for better usability and actionability.
+- **AI Agent Skills**: Instructions and helper scripts that teach an AI coding agent to do Monad tasks, such as building community transformations. See [`skills/`](skills/).
 - **Technical Assets**: Additional technical resources relevant to Monad’s security data platform and ecosystem.
 
 ---
@@ -38,6 +39,15 @@ live under [`scripts/`](scripts/). Each script has its own directory with a
 To add one, see [`CONTRIBUTING.md`](CONTRIBUTING.md) — copy `scripts/_template/`,
 fill in the README (including its **Limitations** section), and register it in the
 catalog.
+
+---
+
+## 🤖 Skills
+
+Skills for AI coding agents live under [`skills/`](skills/). Each one is a
+`SKILL.md` plus the scripts and references it uses, written so any capable agent
+can follow it. The catalog in [`skills/README.md`](skills/README.md) lists what's
+available and how to load a skill into your agent.
 
 ---
 

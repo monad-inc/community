@@ -1,0 +1,1771 @@
+{
+ "to_epoch_ms": [
+  {
+   "name": "epoch seconds",
+   "in": 1792501445,
+   "want": 1792501445000
+  },
+  {
+   "name": "epoch seconds, fractional",
+   "in": 1792501445.123,
+   "want": 1792501445123
+  },
+  {
+   "name": "epoch ms",
+   "in": 1792501445123,
+   "want": 1792501445123
+  },
+  {
+   "name": "epoch us",
+   "in": 1792501445123456,
+   "want": 1792501445123
+  },
+  {
+   "name": "epoch ns",
+   "in": 1792501445123456789,
+   "want": 1792501445123
+  },
+  {
+   "name": "epoch seconds string",
+   "in": "1792501445",
+   "want": 1792501445000
+  },
+  {
+   "name": "decimal seconds string",
+   "in": "1792501445.123",
+   "want": 1792501445123
+  },
+  {
+   "name": "epoch ms string",
+   "in": "1792501445123",
+   "want": 1792501445123
+  },
+  {
+   "name": "epoch us string",
+   "in": "1792501445123456",
+   "want": 1792501445123
+  },
+  {
+   "name": "epoch ns string",
+   "in": "1792501445123456789",
+   "want": 1792501445123
+  },
+  {
+   "name": "protobuf",
+   "in": {
+    "seconds": 1792501445,
+    "nanos": 123456789
+   },
+   "want": 1792501445123
+  },
+  {
+   "name": "protobuf string seconds",
+   "in": {
+    "seconds": "1792501445",
+    "nanos": 123000000
+   },
+   "want": 1792501445123
+  },
+  {
+   "name": "mongo $date ISO",
+   "in": {
+    "$date": "2026-10-20T13:04:05.123Z"
+   },
+   "want": 1792501445123
+  },
+  {
+   "name": "mongo $numberLong",
+   "in": {
+    "$date": {
+     "$numberLong": "1792501445123"
+    }
+   },
+   "want": 1792501445123
+  },
+  {
+   "name": "RFC 3339 Z",
+   "in": "2026-10-20T13:04:05.123Z",
+   "want": 1792501445123
+  },
+  {
+   "name": "RFC 3339 no fraction",
+   "in": "2026-10-20T13:04:05Z",
+   "want": 1792501445000
+  },
+  {
+   "name": "offset +02:00",
+   "in": "2026-10-20T15:04:05.123+02:00",
+   "want": 1792501445123
+  },
+  {
+   "name": "offset +0200",
+   "in": "2026-10-20T15:04:05.123+0200",
+   "want": 1792501445123
+  },
+  {
+   "name": "offset +02",
+   "in": "2026-10-20T15:04:05.123+02",
+   "want": 1792501445123
+  },
+  {
+   "name": "negative offset",
+   "in": "2026-10-20T08:04:05.123-05:00",
+   "want": 1792501445123
+  },
+  {
+   "name": "half-hour offset",
+   "in": "2026-10-20T18:34:05.123+05:30",
+   "want": 1792501445123
+  },
+  {
+   "name": "space separator, no zone = UTC",
+   "in": "2026-10-20 13:04:05.123",
+   "want": 1792501445123
+  },
+  {
+   "name": "comma fraction",
+   "in": "2026-10-20T13:04:05,123Z",
+   "want": 1792501445123
+  },
+  {
+   "name": "nanosecond fraction truncated",
+   "in": "2026-10-20T13:04:05.123456789Z",
+   "want": 1792501445123
+  },
+  {
+   "name": "lowercase t/z",
+   "in": "2026-10-20t13:04:05.123z",
+   "want": 1792501445123
+  },
+  {
+   "name": "date only",
+   "in": "2026-10-20",
+   "want": 1792454400000
+  },
+  {
+   "name": "slash date",
+   "in": "2026/10/20 13:04:05.123",
+   "want": 1792501445123
+  },
+  {
+   "name": "no seconds",
+   "in": "2026-10-20T13:04Z",
+   "want": 1792501440000
+  },
+  {
+   "name": "ISO basic",
+   "in": "20261020T130405Z",
+   "want": 1792501445000
+  },
+  {
+   "name": "Go time.String",
+   "in": "2026-10-20 13:04:05.123 +0000 UTC",
+   "want": 1792501445123
+  },
+  {
+   "name": "trailing UTC",
+   "in": "2026-10-20 13:04:05 UTC",
+   "want": 1792501445000
+  },
+  {
+   "name": "US zone abbreviation",
+   "in": "2026-10-20 09:04:05.123 EDT",
+   "want": 1792501445123
+  },
+  {
+   "name": "surrounding whitespace",
+   "in": "  2026-10-20T13:04:05.123Z  ",
+   "want": 1792501445123
+  },
+  {
+   "name": "RFC 1123",
+   "in": "Tue, 20 Oct 2026 13:04:05 GMT",
+   "want": 1792501445000
+  },
+  {
+   "name": "RFC 2822 offset",
+   "in": "Tue, 20 Oct 2026 15:04:05 +0200",
+   "want": 1792501445000
+  },
+  {
+   "name": "RFC 2822 no weekday",
+   "in": "20 Oct 2026 13:04:05 +0000",
+   "want": 1792501445000
+  },
+  {
+   "name": "RFC 850",
+   "in": "Tuesday, 20-Oct-26 13:04:05 GMT",
+   "want": 1792501445000
+  },
+  {
+   "name": "RFC 2822 US zone",
+   "in": "Tue, 20 Oct 2026 09:04:05 EDT",
+   "want": 1792501445000
+  },
+  {
+   "name": "CEF MMM dd yyyy",
+   "in": "Oct 20 2026 13:04:05",
+   "want": 1792501445000
+  },
+  {
+   "name": "CEF with ms and zone",
+   "in": "Oct 20 2026 13:04:05.123 UTC",
+   "want": 1792501445123
+  },
+  {
+   "name": "CEF with offset",
+   "in": "Oct 20 2026 15:04:05.123 +02:00",
+   "want": 1792501445123
+  },
+  {
+   "name": "long month with comma",
+   "in": "October 20, 2026 13:04:05",
+   "want": 1792501445000
+  },
+  {
+   "name": "four-letter month",
+   "in": "Sept 20 2026 13:04:05",
+   "want": 1789909445000
+  },
+  {
+   "name": "Unix date",
+   "in": "Tue Oct 20 13:04:05 UTC 2026",
+   "want": 1792501445000
+  },
+  {
+   "name": "ANSIC",
+   "in": "Tue Oct 20 13:04:05 2026",
+   "want": 1792501445000
+  },
+  {
+   "name": "ANSIC double space",
+   "in": "Mon Jan  5 13:04:05 2026",
+   "want": 1767618245000
+  },
+  {
+   "name": "JavaScript toString",
+   "in": "Tue Oct 20 2026 15:04:05 GMT+0200 (Central European Summer Time)",
+   "want": 1792501445000
+  },
+  {
+   "name": "Apache CLF",
+   "in": "20/Oct/2026:15:04:05 +0200",
+   "want": 1792501445000
+  },
+  {
+   "name": ".NET JSON",
+   "in": "/Date(1792501445123)/",
+   "want": 1792501445123
+  },
+  {
+   "name": ".NET JSON with offset",
+   "in": "/Date(1792501445123+0200)/",
+   "want": 1792501445123
+  },
+  {
+   "name": "leap day",
+   "in": "2024-02-29T00:00:00Z",
+   "want": 1709164800000
+  },
+  {
+   "name": "century leap year",
+   "in": "2000-03-01T00:00:00Z",
+   "want": 951868800000
+  },
+  {
+   "name": "epoch zero",
+   "in": "1970-01-01T00:00:00Z",
+   "want": 0
+  },
+  {
+   "name": "pre-2000",
+   "in": "1999-12-31T23:59:59.999Z",
+   "want": 946684799999
+  },
+  {
+   "name": "offset crosses year",
+   "in": "2026-01-01T00:30:00+01:00",
+   "want": 1767223800000
+  },
+  {
+   "name": "null",
+   "in": null,
+   "want": null
+  },
+  {
+   "name": "empty string",
+   "in": "",
+   "want": null
+  },
+  {
+   "name": "garbage",
+   "in": "not a date",
+   "want": null
+  },
+  {
+   "name": "syslog without year",
+   "in": "Oct 20 13:04:05",
+   "want": null
+  },
+  {
+   "name": "ambiguous numeric date",
+   "in": "10/20/2026 13:04:05",
+   "want": null
+  },
+  {
+   "name": "month out of range",
+   "in": "2026-13-01T00:00:00Z",
+   "want": null
+  },
+  {
+   "name": "hour out of range",
+   "in": "2026-10-20T25:00:00Z",
+   "want": null
+  },
+  {
+   "name": "unknown zone abbreviation",
+   "in": "2026-10-20T13:04:05 XYZ",
+   "want": null
+  },
+  {
+   "name": "array",
+   "in": [
+    1,
+    2
+   ],
+   "want": null
+  },
+  {
+   "name": "boolean",
+   "in": true,
+   "want": null
+  },
+  {
+   "name": "unrelated object",
+   "in": {
+    "foo": 1
+   },
+   "want": null
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 3)",
+   "in": "garbage",
+   "want": null
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 5)",
+   "in": 1760436000,
+   "want": 1760436000000
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 6)",
+   "in": 1760436000.5,
+   "want": 1760436000500
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 7)",
+   "in": 1760436000123,
+   "want": 1760436000123
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 8)",
+   "in": 1760436000123456,
+   "want": 1760436000123
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 9)",
+   "in": 1760436000123456789,
+   "want": 1760436000123
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 10)",
+   "in": "1760436000",
+   "want": 1760436000000
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 11)",
+   "in": "1760436000.25",
+   "want": 1760436000250
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 12)",
+   "in": {
+    "seconds": 1760436000,
+    "nanos": 500000000
+   },
+   "want": 1760436000500
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 13)",
+   "in": {
+    "seconds": 1760436000
+   },
+   "want": 1760436000000
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 14)",
+   "in": {
+    "nanos": 5
+   },
+   "want": null
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 15)",
+   "in": "2026-10-14",
+   "want": 1791936000000
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 16)",
+   "in": "2026-10-14T10:00",
+   "want": 1791972000000
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 17)",
+   "in": "2026-10-14T10:00:00Z",
+   "want": 1791972000000
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 18)",
+   "in": "2026-10-14T10:00:00.1Z",
+   "want": 1791972000100
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 19)",
+   "in": "2026-10-14T10:00:00.123456789Z",
+   "want": 1791972000123
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 20)",
+   "in": "2026-10-14 10:00:00,5",
+   "want": 1791972000500
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 21)",
+   "in": "2026-10-14T10:00:00+00:00",
+   "want": 1791972000000
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 22)",
+   "in": "2026-10-14T10:00:00+0000",
+   "want": 1791972000000
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 23)",
+   "in": "2026-10-14T10:00:00-06:00",
+   "want": 1791993600000
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 24)",
+   "in": "2026-10-14T10:00:00+05:30",
+   "want": 1791952200000
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 25)",
+   "in": "2026-10-14T10:00:00+05",
+   "want": 1791954000000
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 26)",
+   "in": "2026-10-14t10:00:00z",
+   "want": 1791972000000
+  },
+  {
+   "name": "from community-transformations #41 (to_epoch_ms(.) case 27)",
+   "in": "2026-10-14T10:00:00 UTC",
+   "want": 1791972000000
+  }
+ ],
+ "to_iso": [
+  {
+   "name": "epoch ms",
+   "in": 1792501445123,
+   "want": "2026-10-20T13:04:05.123Z"
+  },
+  {
+   "name": "protobuf",
+   "in": {
+    "seconds": 1792501445,
+    "nanos": 123456789
+   },
+   "want": "2026-10-20T13:04:05.123Z"
+  },
+  {
+   "name": "offset +02:00",
+   "in": "2026-10-20T15:04:05.123+02:00",
+   "want": "2026-10-20T13:04:05.123Z"
+  },
+  {
+   "name": "date only",
+   "in": "2026-10-20",
+   "want": "2026-10-20T00:00:00.000Z"
+  },
+  {
+   "name": "RFC 1123",
+   "in": "Tue, 20 Oct 2026 13:04:05 GMT",
+   "want": "2026-10-20T13:04:05.000Z"
+  },
+  {
+   "name": "CEF with ms and zone",
+   "in": "Oct 20 2026 13:04:05.123 UTC",
+   "want": "2026-10-20T13:04:05.123Z"
+  },
+  {
+   "name": "epoch zero",
+   "in": "1970-01-01T00:00:00Z",
+   "want": "1970-01-01T00:00:00.000Z"
+  },
+  {
+   "name": "pre-2000",
+   "in": "1999-12-31T23:59:59.999Z",
+   "want": "1999-12-31T23:59:59.999Z"
+  },
+  {
+   "name": "null",
+   "in": null,
+   "want": null
+  },
+  {
+   "name": "garbage",
+   "in": "not a date",
+   "want": null
+  },
+  {
+   "name": "syslog without year",
+   "in": "Oct 20 13:04:05",
+   "want": null
+  },
+  {
+   "name": "from community-transformations #41 (to_iso(.) case 2)",
+   "in": "",
+   "want": null
+  },
+  {
+   "name": "from community-transformations #41 (to_iso(.) case 3)",
+   "in": "garbage",
+   "want": null
+  },
+  {
+   "name": "from community-transformations #41 (to_iso(.) case 4)",
+   "in": 1760436000,
+   "want": "2025-10-14T10:00:00.000Z"
+  },
+  {
+   "name": "from community-transformations #41 (to_iso(.) case 5)",
+   "in": 1760436000123,
+   "want": "2025-10-14T10:00:00.123Z"
+  },
+  {
+   "name": "from community-transformations #41 (to_iso(.) case 6)",
+   "in": {
+    "seconds": 1760436000,
+    "nanos": 7000000
+   },
+   "want": "2025-10-14T10:00:00.007Z"
+  },
+  {
+   "name": "from community-transformations #41 (to_iso(.) case 7)",
+   "in": "2026-10-14",
+   "want": "2026-10-14T00:00:00.000Z"
+  },
+  {
+   "name": "from community-transformations #41 (to_iso(.) case 8)",
+   "in": "2026-10-14T10:00:00Z",
+   "want": "2026-10-14T10:00:00.000Z"
+  },
+  {
+   "name": "from community-transformations #41 (to_iso(.) case 9)",
+   "in": "2026-10-14T10:00:00.5-06:00",
+   "want": "2026-10-14T16:00:00.500Z"
+  },
+  {
+   "name": "from community-transformations #41 (to_iso(.) case 10)",
+   "in": "2026-10-14T10:00:00.123456Z",
+   "want": "2026-10-14T10:00:00.123Z"
+  }
+ ],
+ "sev_caption": [
+  {
+   "name": "id 0",
+   "in": 0,
+   "want": "Unknown"
+  },
+  {
+   "name": "id 1",
+   "in": 1,
+   "want": "Informational"
+  },
+  {
+   "name": "id 2",
+   "in": 2,
+   "want": "Low"
+  },
+  {
+   "name": "id 3",
+   "in": 3,
+   "want": "Medium"
+  },
+  {
+   "name": "id 4",
+   "in": 4,
+   "want": "High"
+  },
+  {
+   "name": "id 5",
+   "in": 5,
+   "want": "Critical"
+  },
+  {
+   "name": "id 6",
+   "in": 6,
+   "want": "Fatal"
+  },
+  {
+   "name": "id 99",
+   "in": 99,
+   "want": "Other"
+  },
+  {
+   "name": "string id",
+   "in": "4",
+   "want": "High"
+  },
+  {
+   "name": "out of enum",
+   "in": 7,
+   "want": null
+  },
+  {
+   "name": "null",
+   "in": null,
+   "want": null
+  },
+  {
+   "name": "from community-transformations #41 (sev_caption(.) case 3)",
+   "in": "2",
+   "want": "Low"
+  }
+ ],
+ "sev_to_id": [
+  {
+   "name": "info",
+   "in": "info",
+   "want": 1
+  },
+  {
+   "name": "Informational",
+   "in": "Informational",
+   "want": 1
+  },
+  {
+   "name": "none (CVSS)",
+   "in": "none",
+   "want": 1
+  },
+  {
+   "name": "low",
+   "in": "LOW",
+   "want": 2
+  },
+  {
+   "name": "moderate",
+   "in": "moderate",
+   "want": 3
+  },
+  {
+   "name": "middle",
+   "in": "middle",
+   "want": 3
+  },
+  {
+   "name": "warning",
+   "in": "warning",
+   "want": 3
+  },
+  {
+   "name": "high padded",
+   "in": "  High ",
+   "want": 4
+  },
+  {
+   "name": "critical",
+   "in": "CRITICAL",
+   "want": 5
+  },
+  {
+   "name": "fatal",
+   "in": "fatal",
+   "want": 6
+  },
+  {
+   "name": "emergency",
+   "in": "emergency",
+   "want": 6
+  },
+  {
+   "name": "unknown",
+   "in": "unknown",
+   "want": 0
+  },
+  {
+   "name": "untriaged",
+   "in": "UNTRIAGED",
+   "want": 0
+  },
+  {
+   "name": "empty",
+   "in": "",
+   "want": 0
+  },
+  {
+   "name": "null",
+   "in": null,
+   "want": 0
+  },
+  {
+   "name": "unrecognized",
+   "in": "spicy",
+   "want": 99
+  },
+  {
+   "name": "score 0",
+   "in": 0,
+   "want": 1
+  },
+  {
+   "name": "score 3.9",
+   "in": 3.9,
+   "want": 2
+  },
+  {
+   "name": "score 4",
+   "in": 4,
+   "want": 3
+  },
+  {
+   "name": "score 6.9",
+   "in": 6.9,
+   "want": 3
+  },
+  {
+   "name": "score 7",
+   "in": 7,
+   "want": 4
+  },
+  {
+   "name": "score 8.9",
+   "in": 8.9,
+   "want": 4
+  },
+  {
+   "name": "score 9",
+   "in": 9,
+   "want": 5
+  },
+  {
+   "name": "score 10",
+   "in": 10,
+   "want": 5
+  },
+  {
+   "name": "score string",
+   "in": "7.5",
+   "want": 4
+  },
+  {
+   "name": "score out of range",
+   "in": 11,
+   "want": 99
+  },
+  {
+   "name": "boolean",
+   "in": true,
+   "want": 99
+  }
+ ],
+ "status_to_id": [
+  {
+   "name": "event success",
+   "in": [
+    "success",
+    "event"
+   ],
+   "want": 1
+  },
+  {
+   "name": "event Succeeded",
+   "in": [
+    "Succeeded",
+    "event"
+   ],
+   "want": 1
+  },
+  {
+   "name": "event allowed",
+   "in": [
+    "ALLOWED",
+    "event"
+   ],
+   "want": 1
+  },
+  {
+   "name": "event failed",
+   "in": [
+    "failed",
+    "event"
+   ],
+   "want": 2
+  },
+  {
+   "name": "event denied",
+   "in": [
+    "denied",
+    "event"
+   ],
+   "want": 2
+  },
+  {
+   "name": "event boolean true",
+   "in": [
+    true,
+    "event"
+   ],
+   "want": 1
+  },
+  {
+   "name": "event boolean false",
+   "in": [
+    false,
+    "event"
+   ],
+   "want": 2
+  },
+  {
+   "name": "event unknown",
+   "in": [
+    "unknown",
+    "event"
+   ],
+   "want": 0
+  },
+  {
+   "name": "event null",
+   "in": [
+    null,
+    "event"
+   ],
+   "want": 0
+  },
+  {
+   "name": "event unrecognized",
+   "in": [
+    "weird",
+    "event"
+   ],
+   "want": 99
+  },
+  {
+   "name": "finding open",
+   "in": [
+    "OPEN",
+    "finding"
+   ],
+   "want": 1
+  },
+  {
+   "name": "finding in_progress",
+   "in": [
+    "in_progress",
+    "finding"
+   ],
+   "want": 2
+  },
+  {
+   "name": "finding In-Progress",
+   "in": [
+    "In-Progress",
+    "finding"
+   ],
+   "want": 2
+  },
+  {
+   "name": "finding false_positive",
+   "in": [
+    "false_positive",
+    "finding"
+   ],
+   "want": 3
+  },
+  {
+   "name": "finding risk accepted",
+   "in": [
+    "Risk Accepted",
+    "finding"
+   ],
+   "want": 3
+  },
+  {
+   "name": "finding fixed",
+   "in": [
+    "fixed",
+    "finding"
+   ],
+   "want": 4
+  },
+  {
+   "name": "finding closed",
+   "in": [
+    "closed",
+    "finding"
+   ],
+   "want": 4
+  },
+  {
+   "name": "finding archived -> other",
+   "in": [
+    "archived",
+    "finding"
+   ],
+   "want": 99
+  },
+  {
+   "name": "finding deleted -> other",
+   "in": [
+    "deleted",
+    "finding"
+   ],
+   "want": 99
+  },
+  {
+   "name": "incident triggered",
+   "in": [
+    "triggered",
+    "incident"
+   ],
+   "want": 1
+  },
+  {
+   "name": "incident acknowledged",
+   "in": [
+    "acknowledged",
+    "incident"
+   ],
+   "want": 2
+  },
+  {
+   "name": "incident on_hold",
+   "in": [
+    "on_hold",
+    "incident"
+   ],
+   "want": 3
+  },
+  {
+   "name": "incident resolved",
+   "in": [
+    "resolved",
+    "incident"
+   ],
+   "want": 4
+  },
+  {
+   "name": "incident closed",
+   "in": [
+    "closed",
+    "incident"
+   ],
+   "want": 5
+  },
+  {
+   "name": "unknown kind",
+   "in": [
+    "open",
+    "alert"
+   ],
+   "want": null
+  },
+  {
+   "name": "empty",
+   "in": [
+    "",
+    "finding"
+   ],
+   "want": 0
+  }
+ ],
+ "status_caption": [
+  {
+   "name": "event 1",
+   "in": [
+    1,
+    "event"
+   ],
+   "want": "Success"
+  },
+  {
+   "name": "event 2",
+   "in": [
+    2,
+    "event"
+   ],
+   "want": "Failure"
+  },
+  {
+   "name": "event remediation 4",
+   "in": [
+    4,
+    "event"
+   ],
+   "want": "Partial"
+  },
+  {
+   "name": "event 99",
+   "in": [
+    99,
+    "event"
+   ],
+   "want": "Other"
+  },
+  {
+   "name": "finding 3",
+   "in": [
+    3,
+    "finding"
+   ],
+   "want": "Suppressed"
+  },
+  {
+   "name": "finding 6",
+   "in": [
+    6,
+    "finding"
+   ],
+   "want": "Deleted"
+  },
+  {
+   "name": "incident 3",
+   "in": [
+    3,
+    "incident"
+   ],
+   "want": "On Hold"
+  },
+  {
+   "name": "incident 5",
+   "in": [
+    5,
+    "incident"
+   ],
+   "want": "Closed"
+  },
+  {
+   "name": "string id",
+   "in": [
+    "4",
+    "finding"
+   ],
+   "want": "Resolved"
+  },
+  {
+   "name": "out of enum",
+   "in": [
+    7,
+    "finding"
+   ],
+   "want": null
+  },
+  {
+   "name": "unknown kind",
+   "in": [
+    1,
+    "alert"
+   ],
+   "want": null
+  },
+  {
+   "name": "null id",
+   "in": [
+    null,
+    "event"
+   ],
+   "want": null
+  }
+ ],
+ "cef_sev": [
+  {
+   "name": "info",
+   "in": "info",
+   "want": 1
+  },
+  {
+   "name": "low",
+   "in": "Low",
+   "want": 3
+  },
+  {
+   "name": "medium",
+   "in": "MEDIUM",
+   "want": 5
+  },
+  {
+   "name": "moderate",
+   "in": "moderate",
+   "want": 5
+  },
+  {
+   "name": "high",
+   "in": "high",
+   "want": 7
+  },
+  {
+   "name": "critical",
+   "in": "Critical",
+   "want": 9
+  },
+  {
+   "name": "very-high",
+   "in": "Very-High",
+   "want": 9
+  },
+  {
+   "name": "fatal",
+   "in": "fatal",
+   "want": 10
+  },
+  {
+   "name": "debug",
+   "in": "debug",
+   "want": 0
+  },
+  {
+   "name": "unknown",
+   "in": "unknown",
+   "want": null
+  },
+  {
+   "name": "unrecognized",
+   "in": "spicy",
+   "want": null
+  },
+  {
+   "name": "empty",
+   "in": "",
+   "want": null
+  },
+  {
+   "name": "null",
+   "in": null,
+   "want": null
+  },
+  {
+   "name": "number passthrough",
+   "in": 7,
+   "want": 7
+  },
+  {
+   "name": "float floored",
+   "in": 8.9,
+   "want": 8
+  },
+  {
+   "name": "number clamped high",
+   "in": 99,
+   "want": 10
+  },
+  {
+   "name": "number clamped low",
+   "in": -2,
+   "want": 0
+  },
+  {
+   "name": "numeric string",
+   "in": "6",
+   "want": 6
+  },
+  {
+   "name": "boolean",
+   "in": true,
+   "want": null
+  }
+ ],
+ "truthy": [
+  {
+   "name": "true",
+   "in": true,
+   "want": true
+  },
+  {
+   "name": "false",
+   "in": false,
+   "want": false
+  },
+  {
+   "name": "\"true\"",
+   "in": "true",
+   "want": true
+  },
+  {
+   "name": "\"TRUE\"",
+   "in": "TRUE",
+   "want": true
+  },
+  {
+   "name": "\"True\"",
+   "in": "True",
+   "want": true
+  },
+  {
+   "name": "\"false\"",
+   "in": "false",
+   "want": false
+  },
+  {
+   "name": "\"yes\" is not true",
+   "in": "yes",
+   "want": false
+  },
+  {
+   "name": "\"1\" is not true",
+   "in": "1",
+   "want": false
+  },
+  {
+   "name": "number 1",
+   "in": 1,
+   "want": false
+  },
+  {
+   "name": "null",
+   "in": null,
+   "want": false
+  }
+ ],
+ "is_ip": [
+  {
+   "name": "ipv4",
+   "in": "203.0.113.5",
+   "want": true
+  },
+  {
+   "name": "ipv4 zeros",
+   "in": "0.0.0.0",
+   "want": true
+  },
+  {
+   "name": "ipv4 max",
+   "in": "255.255.255.255",
+   "want": true
+  },
+  {
+   "name": "ipv4 octet > 255",
+   "in": "256.1.1.1",
+   "want": false
+  },
+  {
+   "name": "ipv4 999",
+   "in": "999.1.1.1",
+   "want": false
+  },
+  {
+   "name": "ipv4 leading zero",
+   "in": "01.2.3.4",
+   "want": false
+  },
+  {
+   "name": "ipv4 with port",
+   "in": "203.0.113.5:443",
+   "want": false
+  },
+  {
+   "name": "ipv4 CIDR",
+   "in": "10.0.0.0/8",
+   "want": false
+  },
+  {
+   "name": "three octets",
+   "in": "1.2.3",
+   "want": false
+  },
+  {
+   "name": "ipv6 full",
+   "in": "2001:0db8:85a3:0000:0000:8a2e:0370:7334",
+   "want": true
+  },
+  {
+   "name": "ipv6 compressed",
+   "in": "2001:db8::1",
+   "want": true
+  },
+  {
+   "name": "ipv6 loopback",
+   "in": "::1",
+   "want": true
+  },
+  {
+   "name": "ipv6 unspecified",
+   "in": "::",
+   "want": true
+  },
+  {
+   "name": "ipv6 trailing ::",
+   "in": "fe80::",
+   "want": true
+  },
+  {
+   "name": "ipv4-mapped ipv6",
+   "in": "::ffff:192.0.2.1",
+   "want": true
+  },
+  {
+   "name": "ipv6 two ::",
+   "in": "1::2::3",
+   "want": false
+  },
+  {
+   "name": "ipv6 too many groups",
+   "in": "1:2:3:4:5:6:7:8:9",
+   "want": false
+  },
+  {
+   "name": "ipv6 too few groups",
+   "in": "1:2:3:4:5:6:7",
+   "want": false
+  },
+  {
+   "name": "ipv6 group too long",
+   "in": "12345::1",
+   "want": false
+  },
+  {
+   "name": "ipv6 zone",
+   "in": "fe80::1%eth0",
+   "want": false
+  },
+  {
+   "name": "ipv6 bad embedded v4",
+   "in": "::ffff:999.0.2.1",
+   "want": false
+  },
+  {
+   "name": "ipv6 leading single colon",
+   "in": ":1:2:3:4:5:6:7",
+   "want": false
+  },
+  {
+   "name": "host:port",
+   "in": "example.com:443",
+   "want": false
+  },
+  {
+   "name": "hostname",
+   "in": "example.com",
+   "want": false
+  },
+  {
+   "name": "mac address",
+   "in": "00:1A:2B:3C:4D:5E",
+   "want": false
+  },
+  {
+   "name": "empty",
+   "in": "",
+   "want": false
+  },
+  {
+   "name": "null",
+   "in": null,
+   "want": false
+  },
+  {
+   "name": "number",
+   "in": 1234,
+   "want": false
+  },
+  {
+   "name": "from community-transformations #41 (is_ip(.) case 1)",
+   "in": "1.2.3.4",
+   "want": true
+  },
+  {
+   "name": "from community-transformations #41 (is_ip(.) case 9)",
+   "in": "fe80::1",
+   "want": true
+  },
+  {
+   "name": "from community-transformations #41 (is_ip(.) case 10)",
+   "in": "2001:db8::ffff:1.2.3.4",
+   "want": true
+  },
+  {
+   "name": "from community-transformations #41 (is_ip(.) case 11)",
+   "in": "1:2:3:4:5:6:7:8",
+   "want": true
+  },
+  {
+   "name": "from community-transformations #41 (is_ip(.) case 15)",
+   "in": ":1",
+   "want": false
+  },
+  {
+   "name": "from community-transformations #41 (is_ip(.) case 16)",
+   "in": "host:443",
+   "want": false
+  },
+  {
+   "name": "from community-transformations #41 (is_ip(.) case 17)",
+   "in": "1.2.3.4:443",
+   "want": false
+  },
+  {
+   "name": "from community-transformations #41 (is_ip(.) case 18)",
+   "in": "10:00:00",
+   "want": false
+  },
+  {
+   "name": "from community-transformations #41 (is_ip(.) case 19)",
+   "in": "aa:bb:cc:dd:ee:ff",
+   "want": false
+  },
+  {
+   "name": "from community-transformations #41 (is_ip(.) case 22)",
+   "in": 5,
+   "want": false
+  }
+ ],
+ "json_str": [
+  {
+   "name": "object",
+   "in": {
+    "a": 1,
+    "b": [
+     1,
+     2
+    ]
+   },
+   "want": "{\"a\":1,\"b\":[1,2]}"
+  },
+  {
+   "name": "array",
+   "in": [
+    1,
+    "x"
+   ],
+   "want": "[1,\"x\"]"
+  },
+  {
+   "name": "string passes through",
+   "in": "already text",
+   "want": "already text"
+  },
+  {
+   "name": "number",
+   "in": 42,
+   "want": "42"
+  },
+  {
+   "name": "boolean",
+   "in": false,
+   "want": "false"
+  },
+  {
+   "name": "null",
+   "in": null,
+   "want": null
+  },
+  {
+   "name": "empty object",
+   "in": {},
+   "want": null
+  },
+  {
+   "name": "empty array",
+   "in": [],
+   "want": null
+  },
+  {
+   "name": "from community-transformations #41 (json_str(.) case 4)",
+   "in": "abc",
+   "want": "abc"
+  },
+  {
+   "name": "from community-transformations #41 (json_str(.) case 5)",
+   "in": {
+    "a": 1
+   },
+   "want": "{\"a\":1}"
+  },
+  {
+   "name": "from community-transformations #41 (json_str(.) case 6)",
+   "in": [
+    1,
+    2
+   ],
+   "want": "[1,2]"
+  },
+  {
+   "name": "from community-transformations #41 (json_str(.) case 7)",
+   "in": 3,
+   "want": "3"
+  },
+  {
+   "name": "from community-transformations #41 (json_str(.) case 8)",
+   "in": true,
+   "want": "true"
+  }
+ ],
+ "present_unique": [
+  {
+   "name": "drops null and blank",
+   "in": [
+    "b",
+    null,
+    "a",
+    "",
+    "a"
+   ],
+   "want": [
+    "a",
+    "b"
+   ]
+  },
+  {
+   "name": "flattens one level",
+   "in": [
+    [
+     "10.0.0.1",
+     "10.0.0.2"
+    ],
+    "10.0.0.1",
+    null
+   ],
+   "want": [
+    "10.0.0.1",
+    "10.0.0.2"
+   ]
+  },
+  {
+   "name": "scalar",
+   "in": "alice",
+   "want": [
+    "alice"
+   ]
+  },
+  {
+   "name": "null",
+   "in": null,
+   "want": []
+  },
+  {
+   "name": "empty",
+   "in": [],
+   "want": []
+  },
+  {
+   "name": "all empty",
+   "in": [
+    null,
+    "",
+    []
+   ],
+   "want": []
+  },
+  {
+   "name": "keeps zero and false",
+   "in": [
+    0,
+    false,
+    0
+   ],
+   "want": [
+    false,
+    0
+   ]
+  }
+ ],
+ "prune": [
+  {
+   "name": "drops null/{}/[]",
+   "in": {
+    "a": null,
+    "b": {},
+    "c": [],
+    "d": 1
+   },
+   "want": {
+    "d": 1
+   }
+  },
+  {
+   "name": "keeps blank, zero, false",
+   "in": {
+    "a": "",
+    "b": 0,
+    "c": false
+   },
+   "want": {
+    "a": "",
+    "b": 0,
+    "c": false
+   }
+  },
+  {
+   "name": "cascades emptied parents",
+   "in": {
+    "a": {
+     "b": {
+      "c": null
+     }
+    },
+    "d": "x"
+   },
+   "want": {
+    "d": "x"
+   }
+  },
+  {
+   "name": "arrays",
+   "in": {
+    "a": [
+     null,
+     1,
+     {},
+     [],
+     ""
+    ]
+   },
+   "want": {
+    "a": [
+     1,
+     ""
+    ]
+   }
+  },
+  {
+   "name": "all empty",
+   "in": {
+    "a": null
+   },
+   "want": {}
+  },
+  {
+   "name": "scalar passes through",
+   "in": "x",
+   "want": "x"
+  },
+  {
+   "name": "from community-transformations #41 (prune case 1)",
+   "in": {
+    "a": null,
+    "b": "",
+    "c": {},
+    "d": [],
+    "e": [
+     null,
+     1,
+     {}
+    ],
+    "f": {
+     "g": null
+    },
+    "h": 0,
+    "i": false
+   },
+   "want": {
+    "b": "",
+    "e": [
+     1
+    ],
+    "h": 0,
+    "i": false
+   }
+  }
+ ],
+ "prune_blank": [
+  {
+   "name": "drops blank too",
+   "in": {
+    "a": "",
+    "b": null,
+    "c": "x"
+   },
+   "want": {
+    "c": "x"
+   }
+  },
+  {
+   "name": "keeps zero and false",
+   "in": {
+    "a": 0,
+    "b": false
+   },
+   "want": {
+    "a": 0,
+    "b": false
+   }
+  },
+  {
+   "name": "cascades",
+   "in": {
+    "a": {
+     "b": "",
+     "c": [
+      ""
+     ]
+    },
+    "d": 1
+   },
+   "want": {
+    "d": 1
+   }
+  },
+  {
+   "name": "arrays",
+   "in": {
+    "a": [
+     "",
+     null,
+     "y"
+    ]
+   },
+   "want": {
+    "a": [
+     "y"
+    ]
+   }
+  },
+  {
+   "name": "whitespace is not blank",
+   "in": {
+    "a": " "
+   },
+   "want": {
+    "a": " "
+   }
+  },
+  {
+   "name": "from community-transformations #41 (prune_blank case 1)",
+   "in": {
+    "a": null,
+    "b": "",
+    "c": {},
+    "d": [],
+    "e": [
+     null,
+     1,
+     ""
+    ],
+    "f": {
+     "g": ""
+    },
+    "h": 0,
+    "i": false
+   },
+   "want": {
+    "e": [
+     1
+    ],
+    "h": 0,
+    "i": false
+   }
+  }
+ ]
+}

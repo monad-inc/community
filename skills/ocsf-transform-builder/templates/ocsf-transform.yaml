@@ -1,0 +1,155 @@
+name: "<Vendor> <Datatype> to OCSF v<ocsf-version>"
+description: "Transforms <Vendor> <Datatype> records into the OCSF v<ocsf-version> <ClassName> class."
+# New transform: author is your GitHub profile URL, also listed first in
+# contributors. When updating someone else's transform, keep their author and
+# append yourself to contributors.
+author: "https://github.com/<your-handle>"
+contributors:
+  - "https://github.com/<your-handle>"
+inputs:
+  - "<vendor>-<datatype>"
+tags:
+  - "v<ocsf-version>"
+  - "ocsf"
+  - "<vendor>"
+  - "<class-category-tag>"
+config:
+  operations:
+    - operation: "jq"
+      arguments:
+        key: ""
+        query: |
+          # ---------------------------------------------------------------
+          # OCSF <ClassName> (class_uid=<UID>) — v<OCSF_VERSION>
+          # Input: one <Vendor> <Datatype> record per invocation.
+          # ---------------------------------------------------------------
+
+          # Standard helpers (SKILL.md "Standard jq helpers"). Paste with
+          # scripts/jq-helpers.sh show <name>...; never edit these copies.
+          # Epoch MILLISECONDS from any common timestamp form; null if empty or unparseable.
+          def to_epoch_ms($ts):
+            def _n: if . == null then null else tonumber end;
+            def _num_ms($n):
+              if   $n >= 1e17 then ($n / 1000000 | floor)
+              elif $n >= 1e14 then ($n / 1000 | floor)
+              elif $n >= 1e11 then ($n | floor)
+              else ($n * 1000 + 0.001 | floor) end;
+            def _digits_ms($d):
+              ($d | ltrimstr("-") | length) as $l
+              | if   $l >= 18 then ($d[0:-6] | tonumber)
+                elif $l >= 15 then ($d[0:-3] | tonumber)
+                elif $l >= 12 then ($d | tonumber)
+                else ($d | tonumber) * 1000 end;
+            def _frac_ms($f): if $f == null then 0 else (($f + "000")[0:3] | tonumber) end;
+            def _mon($m):
+              if $m == null then null
+              else {"JAN":1,"FEB":2,"MAR":3,"APR":4,"MAY":5,"JUN":6,
+                    "JUL":7,"AUG":8,"SEP":9,"OCT":10,"NOV":11,"DEC":12}[$m[0:3]] end;
+            def _zone($z):
+              if $z == null or $z == "" then 0
+              else
+                ($z | if test("^(UTC|GMT|UT)[+-]") then sub("^(UTC|GMT|UT)"; "") else . end) as $z
+                | if ($z | test("^[+-][0-9]{1,2}(:?[0-9]{2})?$")) then
+                    ($z | capture("^(?<sg>[+-])(?<h>[0-9]{1,2}):?(?<m>[0-9]{2})?$")) as $o
+                    | (if $o.sg == "-" then -1 else 1 end)
+                      * (($o.h | tonumber) * 3600 + (($o.m // "0") | tonumber) * 60)
+                  else
+                    {"Z":0,"UTC":0,"GMT":0,"UT":0,"EST":-18000,"EDT":-14400,"CST":-21600,
+                     "CDT":-18000,"MST":-25200,"MDT":-21600,"PST":-28800,"PDT":-25200}[$z]
+                  end
+              end;
+            def _ms($c):
+              ($c.y | tonumber | if . < 100 then (if . < 70 then . + 2000 else . + 1900 end) else . end) as $y
+              | ($c.mo | _n) as $mo
+              | ($c.d | tonumber) as $d
+              | (($c.h // "0") | tonumber) as $h
+              | (($c.mi // "0") | tonumber) as $mi
+              | (($c.s // "0") | tonumber) as $s
+              | _zone($c.z) as $off
+              | if $mo == null or $off == null or $mo < 1 or $mo > 12 or $d < 1 or $d > 31
+                   or $h > 23 or $mi > 59 or $s > 60 then null
+                else
+                  ($y - (if $mo <= 2 then 1 else 0 end)) as $yy
+                  | ($yy / 400 | floor) as $era
+                  | ($yy - $era * 400) as $yoe
+                  | (((153 * ($mo + (if $mo > 2 then -3 else 9 end)) + 2) / 5 | floor) + $d - 1) as $doy
+                  | ($yoe * 365 + ($yoe / 4 | floor) - ($yoe / 100 | floor) + $doy) as $doe
+                  | ($era * 146097 + $doe - 719468) as $days
+                  | ($days * 86400 + $h * 3600 + $mi * 60 + $s - $off) * 1000 + _frac_ms($c.f)
+                end;
+            def _str($raw):
+              ($raw | ascii_upcase | sub("\\s*\\([^)]*\\)\\s*$"; "") | sub("^\\s+"; "") | sub("\\s+$"; "")) as $s
+              | "(?<z>Z|(?:UTC|GMT|UT)?[+-][0-9]{1,2}(?::?[0-9]{2})?|[A-Z]{1,5})" as $Z
+              | "(?<h>[0-9]{1,2}):(?<mi>[0-9]{2})(?::(?<s>[0-9]{2}))?(?:[.,](?<f>[0-9]+))?" as $T
+              | if $s == "" then null
+                elif ($s | test("^-?[0-9]+$")) then _digits_ms($s)
+                elif ($s | test("^[0-9]+\\.[0-9]+$")) then
+                  ($s | split(".")) as $p
+                  | if ($p[0] | length) <= 11 then _digits_ms($p[0]) + _frac_ms($p[1])
+                    else _digits_ms($p[0]) end
+                elif ($s | test("^/DATE\\(-?[0-9]+([+-][0-9]{4})?\\)/$")) then
+                  ($s | capture("(?<ms>-?[0-9]+)").ms | tonumber)
+                else
+                  first(
+                    ($s | capture("^(?<y>[0-9]{4})[-/](?<mo>[0-9]{1,2})[-/](?<d>[0-9]{1,2})(?:[T ]+" + $T + ")?\\s*" + $Z + "?(?:\\s+[A-Z]{2,5})?$") | _ms(.)),
+                    ($s | capture("^(?<y>[0-9]{4})(?<mo>[0-9]{2})(?<d>[0-9]{2})T(?<h>[0-9]{2})(?<mi>[0-9]{2})(?<s>[0-9]{2})(?:[.,](?<f>[0-9]+))?" + $Z + "?$") | _ms(.)),
+                    ($s | capture("^(?:[A-Z]+,?\\s+)?(?<d>[0-9]{1,2})[ -](?<mon>[A-Z]{3,9})[ -](?<y>[0-9]{2,4})\\s+" + $T + "\\s*" + $Z + "?$") | .mo = _mon(.mon) | _ms(.)),
+                    ($s | capture("^(?:[A-Z]+,?\\s+)?(?<mon>[A-Z]{3,9})\\.?\\s+(?<d>[0-9]{1,2}),?\\s+(?<y>[0-9]{4})(?:,?\\s+" + $T + ")?\\s*" + $Z + "?$") | .mo = _mon(.mon) | _ms(.)),
+                    ($s | capture("^(?:[A-Z]+\\s+)?(?<mon>[A-Z]{3,9})\\s+(?<d>[0-9]{1,2})\\s+" + $T + "\\s+(?:" + $Z + "\\s+)?(?<y>[0-9]{4})$") | .mo = _mon(.mon) | _ms(.)),
+                    ($s | capture("^(?<d>[0-9]{1,2})/(?<mon>[A-Z]{3})/(?<y>[0-9]{4}):" + $T + "\\s*" + $Z + "?$") | .mo = _mon(.mon) | _ms(.))
+                  ) // null
+                end;
+            if $ts == null then null
+            elif ($ts | type) == "number" then _num_ms($ts)
+            elif ($ts | type) == "string" then _str($ts)
+            elif ($ts | type) == "object" then
+              if   $ts["$date"] != null then to_epoch_ms($ts["$date"])
+              elif $ts["$numberLong"] != null then to_epoch_ms($ts["$numberLong"])
+              elif $ts.seconds != null then
+                ($ts.seconds | tostring | tonumber) * 1000
+                + ((($ts.nanos // 0) | tostring | tonumber) / 1000000 | floor)
+              else null end
+            else null end;
+
+          # OCSF severity caption for a severity_id (identical in OCSF 1.0.0-1.9.0);
+          # null for ids outside the enum. For 99 (Other), prefer the source's own label.
+          def sev_caption($id):
+            {"0":"Unknown","1":"Informational","2":"Low","3":"Medium","4":"High",
+             "5":"Critical","6":"Fatal","99":"Other"}[$id | tostring];
+
+          {
+            # --- Classification (REQUIRED for every OCSF event) ---
+            "category_uid": <CATEGORY_UID>,
+            "class_uid":    <CLASS_UID>,
+            "type_uid":     (<CLASS_UID> * 100 + <ACTIVITY_ID>),
+            "activity_id":  <ACTIVITY_ID>,
+            "severity_id":  0,
+            "severity":     sev_caption(0),
+
+            # --- Time (REQUIRED) ---
+            "time": (to_epoch_ms(.<source_time_field>) // (now * 1000 | floor)),
+
+            # --- Metadata (REQUIRED) ---
+            "metadata": {
+              "version": "<OCSF_VERSION>",
+              "product": {
+                "vendor_name": "<Vendor>",
+                "name": "<Product Name>"
+              }
+            },
+
+            # --- Class-specific required objects (see lookup-ocsf-class.sh) ---
+            # e.g. "user": { ... }, "device": { ... }, "finding_info": { ... }
+
+            # --- Recommended fields (improves downstream usability) ---
+            "status_id": 0,
+            "message": (.<source_message_field> // ""),
+
+            # --- Pass-through for fields that don't map cleanly to OCSF ---
+            "unmapped": {
+              # "<source_key>": .<source_key>
+            },
+
+            # --- Original record for audit / debugging ---
+            "raw_data": (. | tostring)
+          }
