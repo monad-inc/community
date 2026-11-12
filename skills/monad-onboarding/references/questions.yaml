@@ -1,0 +1,104 @@
+# Every question the onboarding flow always asks.
+#
+# - Interactive mode asks these in order, skipping any whose `ask_when` is false.
+# - Intake mode reads the answers from an intake document and asks only the
+#   `required` ones that are missing or ambiguous (decision-tree.md, Phase 6).
+# - scripts/questionnaire.sh renders this file as a questionnaire for
+#   collecting answers ahead of time, so the two never drift.
+#
+# Each question maps to a path in intake.schema.json via `maps_to`. Adding a
+# question = an entry here + the matching field in intake.schema.json.
+# Type-specific questions are NOT listed here: they live in the relevant module
+# and are merged in when that module is loaded.
+
+version: 1
+
+questions:
+  - id: org
+    phase: 1
+    prompt: "Which Monad organization should this environment be built in?"
+    help: "Resolved with list_organizations; picked automatically when there is only one."
+    type: lookup
+    required: true
+    maps_to: org_id
+
+  - id: environment_name
+    phase: 1
+    prompt: "What short name should prefix everything we create? (for example 'prod' or 'acme-poc')"
+    type: string
+    required: true
+    maps_to: environment_name
+
+  - id: outputs
+    phase: 2
+    prompt: "Where should your data go? (one or more destinations: a SIEM, a data lake, object storage, …)"
+    help: "Options come from list_output_types; types listed in modules/outputs/_registry.yaml get extra guidance."
+    type: multi_select
+    required: true
+    maps_to: outputs[].type
+    triggers_module: modules/outputs/_registry.yaml
+
+  - id: data_model_strategy
+    phase: 3
+    prompt: >-
+      How do you want the data organized in your index-based destination?
+      (a) one index for everything, (b) one index per data source, or
+      (c) grouped by data category (identity, network, endpoint, …).
+    help: "Trade-offs and the driver questions are in index-models guidance (index-modeling.md)."
+    type: single_select
+    options: [single, per_source, by_category]
+    required: true
+    ask_when: "any output is index-based"
+    reference: index-modeling.md
+    maps_to: data_model.strategy
+
+  - id: data_source_categories
+    phase: 4
+    prompt: "Which categories of security data do you collect?"
+    help: "Categories are listed in data-source-catalog.md."
+    type: multi_select
+    required: true
+    maps_to: data_sources[].category
+
+  - id: data_source_tools
+    phase: 4
+    prompt: "For <category>, which tools or products do you use?"
+    type: multi_select_per_category
+    required: true
+    ask_when: "the category is collected"
+    maps_to: data_sources[].tools[]
+    triggers_module: modules/inputs/_registry.yaml
+
+  - id: modifiers
+    phase: 5
+    prompt: "Any add-ons that apply across pipelines? (for example: also archive everything to cold storage, or normalize the data shape)"
+    type: multi_select
+    required: false
+    maps_to: modifiers[].id
+    triggers_module: modules/modifiers/_registry.yaml
+
+  - id: pipeline_layout
+    phase: 5
+    prompt: "Should each source get its own pipeline (recommended), or do you want a different grouping?"
+    help: "Patterns and trade-offs are in data-organization.md."
+    type: single_select
+    options: [per_source, custom]
+    required: false
+    maps_to: pipeline_layout.strategy
+
+  - id: mixed_streams
+    phase: 5
+    prompt: "Does any source carry several kinds of data through one feed (a syslog or HTTP collector, a shared bucket)? If so, which kinds, how can each be recognized, and which data category (or destination) does each belong to?"
+    help: "Each mixed stream is split by type; see data-organization.md, pattern 2 and 3."
+    type: free_text
+    required: false
+    maps_to: pipeline_layout.mixed_streams[]
+
+  - id: unmatched_records
+    phase: 5
+    prompt: "What should happen to records that don't match any route: archive them (recommended) or drop them?"
+    type: single_select
+    options: [archive, drop]
+    required: false
+    ask_when: "any routing condition is planned"
+    maps_to: pipeline_layout.unmatched

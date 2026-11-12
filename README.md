@@ -11,7 +11,7 @@ This repo contains a variety of public assets aimed at enhancing understanding a
 - **Log Samples**: Real-world before-and-after examples of log transformations, such as flattening, masking, and filtering.
 - **Code Snippets**: Ready-to-use scripts and configurations to help you implement and optimize your data pipelines. See [`scripts/`](scripts/).
 - **Transformation Examples**: JSON examples to showcase how data can be cleaned, normalized, and structured for better usability and actionability.
-- **AI Agent Skills**: Instructions and helper scripts that teach an AI coding agent to do Monad tasks, such as building community transformations. See [`skills/`](skills/).
+- **AI Agent Skills**: Instructions and helper scripts that teach an AI coding agent to do Monad tasks, such as onboarding to Monad and building community transformations. See [`skills/`](skills/).
 - **Technical Assets**: Additional technical resources relevant to Monad’s security data platform and ecosystem.
 
 ---

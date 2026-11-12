@@ -1,0 +1,26 @@
+# Modifier registry: cross-cutting add-ons applied across many or all pipelines.
+#
+# The decision tree (Phase 5a) offers the modifiers whose `offer_when` matches
+# the answers so far; each module says how it changes the build plan in Phase 7.
+# To add one: a <id>.md in this folder + a row here. Don't edit the spine.
+
+version: 1
+
+modifiers:
+  - id: cold-storage-archive
+    label: "Also archive all data to object storage"
+    file: cold-storage-archive.md
+    offer_when: "always"
+
+  - id: transform-reshape
+    label: "Normalize or reshape data before it reaches the destination"
+    file: transform-reshape.md
+    offer_when: "always"
+
+  # Ideas for future modules (add the file to enable):
+  # - id: pii-redaction
+  #   label: "Redact PII before output"
+  #   offer_when: "identity data is collected"
+  # - id: dedupe
+  #   label: "Drop duplicate events"
+  #   offer_when: "always"

@@ -1,0 +1,27 @@
+# Output module registry.
+#
+# The decision tree (Phase 2) reads this to know which output types have
+# dedicated guidance and which are index-based. Load a module's `file` ONLY
+# when its type is chosen.
+#
+# Types not listed here still work: use get_output_type to learn their settings
+# and secrets. Add a module when an output needs opinionated guidance.
+# To add one: a <type>.md in this folder + a row here. Don't edit the spine.
+
+version: 1
+
+outputs:
+  - type: splunk
+    label: Splunk
+    index_based: true            # triggers Phase 3 (data model)
+    file: splunk.md
+
+  - type: elasticsearch
+    label: Elasticsearch
+    index_based: true
+    file: elasticsearch.md
+
+  - type: s3
+    label: S3
+    index_based: false
+    file: s3.md

@@ -1,0 +1,69 @@
+# Onboarding intake: a filled-in example.
+#
+# Copy this file, edit the answers, and hand it to the skill. Check it first with:
+#   python3 scripts/validate-intake.py my-intake.yaml
+#
+# Shape: references/intake.schema.json. Fuzzy vendor names are fine; the skill
+# resolves them to Monad input types and confirms with you.
+# NEVER put credentials (tokens, passwords, keys) in this file. The skill creates
+# REPLACE_ME placeholder secrets that you fill in from the Monad UI.
+
+schema_version: 1
+
+org_id: acme-security          # an org name or ID; resolved with list_organizations
+environment_name: acme-poc
+
+outputs:
+  - type: splunk               # index-based → the data_model section below applies
+    config:
+      url: https://splunk.acme.example
+      port: "8088"
+      # The HEC token is a secret: not here. It becomes a REPLACE_ME placeholder.
+
+data_model:
+  strategy: by_category        # single | per_source | by_category
+  options:
+    index_name_template: "acme_{category}_prod"
+
+data_sources:
+  - category: identity
+    care: true
+    tools:
+      - vendor: okta
+  - category: endpoint
+    care: true
+    tools:
+      - vendor: crowdstrike
+        # CrowdStrike has several input types, one per feed. List the ones you
+        # want, or leave this out and the skill will ask.
+        input_types: [crowdstrike-event-stream, crowdstrike-device-details]
+  - category: network
+    care: false
+  - category: firewall
+    care: true
+    tools:
+      - vendor: palo alto
+        via: syslog collector   # arrives through the mixed stream below
+
+pipeline_layout:
+  strategy: per_source
+  unmatched: archive
+  mixed_streams:
+    - source: syslog collector
+      input_type: monad-syslog
+      split: edges
+      types:
+        - name: firewall
+          category: firewall
+          match: "msg starts with the PAN-OS CSV signature"
+        - name: linux_auth
+          category: identity
+          match: "app-name is sshd, sudo, su, or CRON"
+
+modifiers:
+  - id: cold-storage-archive   # also send everything to cheap object storage
+    config:
+      # role_arn: arn:aws:iam::<account-id>:role/<role-name>   # preferred; see the S3 docs
+      bucket: acme-security-cold
+      region: us-east-1
+      retention_days: 365      # applied with a bucket lifecycle rule, outside Monad
