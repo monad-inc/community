@@ -23,7 +23,11 @@ Handle this as a selection step inside Phase 4, after the vendor is known.
 2. Present the groups with each type's name and a one-line description
    (`list_input_types(search: …, verbose: true)`). Recommend the event feeds
    for the user's destination; don't assume "all".
-3. Record the choices in `data_sources[].tools[].input_types`.
+3. Record the choices in `data_sources[].tools[].input_types`. In intake mode,
+   when `input_types` is omitted, default to the vendor's main event or audit
+   feed (for example `okta-systemlog`, `crowdstrike-event-stream`), list the
+   other feeds in the plan as "available, not selected", and let the plan
+   approval confirm it.
 4. For each chosen type, `get_input_type` for its settings and secrets. Feeds
    from one vendor usually share credentials: create **one** set of `REPLACE_ME`
    secrets per vendor and reference it from each input, not one set per input.

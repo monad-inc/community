@@ -77,7 +77,11 @@ with `sourcetype`).
 - `by_category`: one index per category present in `data_sources`; each
   source's pipeline routes to its category's index. Use
   `data_model.options.index_name_template` if given (for example
-  `acme_{category}_prod`).
+  `acme_{category}_prod`). A type split out of a mixed stream uses its own
+  `category` (or an explicit `destination`) from `pipeline_layout.mixed_streams`.
+- Carve-outs: sources listed in `data_model.options.dedicated` (input types or
+  vendor names) get their own index regardless of the strategy, for example
+  `dedicated: [{source: palo alto, reason: volume}]`.
 
 How an output implements an index (for example, one fixed index per output
 versus an index chosen per record) is output-specific and lives in the output

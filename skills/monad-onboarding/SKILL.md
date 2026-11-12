@@ -29,15 +29,23 @@ This skill never calls the Monad API directly.
    approval before creating anything.
 3. **Fetch before you create or modify.** List existing components first and reuse
    a match instead of creating a duplicate. Never build an update from memory.
+   Updates replace a component's whole config, and `get_input` / `get_output`
+   summaries don't show secret references; read the full config (including
+   `secrets`) from `get_pipeline` with `raw: true` and carry it forward, or the
+   update silently drops the credential reference.
 4. **Create pipelines disabled.** Pass `enabled: false` explicitly to
    `create_pipeline` unless the user has already chosen otherwise. A pipeline whose
-   secrets are still `REPLACE_ME` can't run.
+   secrets are still `REPLACE_ME` can't deliver, and enabling it with synthetic
+   data would queue fake records for the real destination. The one exception is
+   a temporary **verification pipeline** that sends synthetic data to a
+   `dev-null` output; see [references/iterative-build.md](references/iterative-build.md).
 5. **Confirm schemas live.** Before configuring any connector, call
    `get_input_type` / `get_output_type` for it. The module files here describe
    intent and judgment; the live schema is the authority on field names.
 6. **Name what you route.** Every edge that carries a condition gets a `name`
    that says where it goes and a `description` that says which records take it
-   and why.
+   and why. `create_pipeline` accepts `name` on each edge even where its
+   documented edge format doesn't list it.
 7. **Load modules on demand.** Don't read the files under `references/modules/`
    up front. The decision tree says when to open each one.
 
@@ -57,8 +65,12 @@ This skill never calls the Monad API directly.
      python3 scripts/validate-intake.py path/to/intake.yaml
      ```
 
-     Then ask only about gaps and ambiguities, show the plan, get one approval,
-     and build.
+     Then work through the same phases without asking what the intake already
+     answers, ask only about gaps and ambiguities, show the plan, get one
+     approval, and build.
+
+   All script paths in this skill are relative to the skill's root directory
+   (the directory holding this file).
 3. Both modes fill the same intake object, so the flow is identical once the
    answers are in.
 

@@ -88,7 +88,7 @@ questions:
 
   - id: mixed_streams
     phase: 5
-    prompt: "Does any source carry several kinds of data through one feed (a syslog or HTTP collector, a shared bucket)? If so, which kinds, and how can each be recognized?"
+    prompt: "Does any source carry several kinds of data through one feed (a syslog or HTTP collector, a shared bucket)? If so, which kinds, how can each be recognized, and which data category (or destination) does each belong to?"
     help: "Each mixed stream is split by type; see data-organization.md, pattern 2 and 3."
     type: free_text
     required: false

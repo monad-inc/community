@@ -19,7 +19,13 @@ routing.
   two outputs (same index, different `sourcetype`).
 - **`timestamp_field`** (a JSON path such as `eventTime`) sends each record's own
   event time, so Splunk indexes it at the time it happened instead of arrival
-  time. Set it whenever the source has a reliable event-time field.
+  time. Set it whenever the source has a reliable event-time field. Prefer an
+  ISO 8601 string field (for example Okta's `published`). If the only
+  candidate is an epoch number, check in Splunk after real data arrives that
+  events carry the right time; a value Monad can't parse is sent without a
+  time, so Splunk falls back to arrival time. Synthetic data can hold frozen
+  event times, so choose the field by meaning, not by whether the sampled
+  value looks current.
 - **Monad can create the index** when `to_create` is true and a Splunk admin
   `username` and `password` (a secret) are provided. Otherwise the index must
   already exist.
@@ -31,6 +37,19 @@ Settings: `url` and `port` (required), `index`, `sourcetype`, `source`, `host`,
 `timestamp_field`, `username`, `to_create`, `allow_insecure`. Secrets: `token`
 (required, the HEC token) and `password` (only for index creation). Both secrets
 become `REPLACE_ME` placeholders.
+
+### Questions to merge into the flow
+
+Ask these unless the intake answers them (`outputs[].config`):
+
+- HEC URL and port.
+- Should Monad create the indexes (needs a Splunk admin username, and a
+  password set later in the UI), or will they exist already? Intake key:
+  `outputs[].config.to_create`. Default: no; the handoff lists the indexes to
+  create in Splunk.
+- Sourcetype per source (see section C); if the user has no preference, propose
+  them in the plan.
+- Which data must not share an index (the driver questions in Phase 3).
 
 ## B. The data-organization conversation (Phase 3)
 
@@ -63,7 +82,8 @@ consolidation over fragmentation.
 Default to Splunk's published convention, explain why, and let the user accept
 it, adjust it, or bring their own.
 
-- **Default:** `<company>_<purpose>_<sensitivity>`, lowercase with underscores,
+- **Default:** `<company>_<purpose>_<sensitivity>` (use `environment_name` for
+  the company segment unless the user gives one), lowercase with underscores,
   where the purpose is generic (`firewall`, `identity`, `web`), not a product or
   team name that will change. Examples: `acme_firewall_prod`, `acme_identity_pci`.
   ([Splunk Lantern: naming conventions](https://lantern.splunk.com/Splunk_Success_Framework/Data_Management/Naming_conventions))
@@ -71,14 +91,28 @@ it, adjust it, or bring their own.
   `acme_*_pci`), a generic purpose survives a vendor change, and a sensitivity
   segment lets you secure and retain by data class.
 - Honor `data_model.options.index_name_template` when the intake provides one.
-- Sourcetypes: use the vendor's standard sourcetype where one exists (for
-  example `pan:traffic`, `aws:cloudtrail`) so Splunk add-ons parse the data.
+- **Sourcetypes:** Monad sends each record as a JSON event. Pick a sourcetype
+  whose parsing expects JSON:
+  - Vendors whose native format is JSON (Okta System Log, CrowdStrike event
+    streams, CloudTrail) can use the vendor's JSON sourcetype, so Splunk
+    add-ons apply their field extractions.
+  - Vendors whose add-on expects raw text (PAN-OS `pan:*`, `linux_secure`,
+    most syslog sourcetypes) won't parse a JSON-wrapped record. **Default to
+    Splunk's built-in `_json`**, which extracts the JSON fields with no Splunk
+    configuration, and tell the user the vendor add-on's extractions won't
+    apply. Offer the alternative in the plan: a transform that sends only the
+    original line (for syslog, the `msg` field) with the vendor sourcetype.
+  - An intake can set sourcetypes explicitly in
+    `outputs[].config.sourcetypes`, a map from source (vendor or input type) to
+    sourcetype; those win over these defaults.
 
 ## D. Build directives
 
 1. `get_output_type("splunk")` to confirm the current settings and secrets.
 2. Work out the **target set** from the layout and driver splits: each distinct
-   (index, sourcetype) pair is one Splunk output.
+   (index, sourcetype) pair is one Splunk output, named
+   `<env>-splunk-<index purpose>[-<source>]`, for example
+   `acme-splunk-identity-okta`.
 3. Create one `REPLACE_ME` secret for the HEC token, for example
    `<env>-splunk-hec-token`, and reuse it across outputs that share a token. If
    Monad is creating indexes, also create `<env>-splunk-admin-password`.

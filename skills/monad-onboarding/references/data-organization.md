@@ -22,8 +22,10 @@ From the [routing docs](https://app.monad.com/docs/routing/index):
   `or`, `nor`, `xor`). Wrap a single rule in `and`. Leaf rules include
   `equals`, `equals_any`, `contains`, `starts_with`, `ends_with`,
   `matches_regex`, `key_exists`, `is_empty`, `greater_than`, `less_than`, and
-  `sample`. Most leaf rules accept `not: true`. Call `list_condition_types` for
-  the current list and config shapes.
+  `sample`. Most leaf rules accept `not: true`. Call `list_condition_types` or
+  `list_edge_condition_rules` (whichever the MCP server offers) for the current
+  list and config shapes; trust it over any older names you have seen. String
+  rules are case-sensitive unless you set `case_insensitive: true`.
 - Name every conditional edge for where it goes ("Firewall → Splunk netfw") and
   describe which records take it and why. An unnamed edge shows up in the UI
   labelled only by its operator.
@@ -53,6 +55,11 @@ Syslog input ─▶ (optional) classify transform
    ├─ "Linux auth → os_auth"  equals_any     app-name [sshd, sudo, su, CRON]
    └─ "Unmatched → archive"   nor(<the two rules above>)
 ```
+
+The syslog input (`monad-syslog`) emits one record per message, shaped
+`{"pri", "timestamp", "hostname", "app-name", "procid", "msg"}`, with the
+message body in `msg`. Other collectors have their own shape; sample one
+before writing conditions (see [iterative-build.md](iterative-build.md)).
 
 - **Route on raw fields when you can.** If a field already tells the types apart
   (an app name, a log type, a prefix), put the rule straight on the edge. You

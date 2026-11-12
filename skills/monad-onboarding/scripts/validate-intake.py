@@ -184,7 +184,25 @@ def rules(doc, errors, warnings):
         )
 
     layout = doc.get("pipeline_layout") or {}
-    for i, stream in enumerate(layout.get("mixed_streams") or []):
+    streams = layout.get("mixed_streams") or []
+    stream_sources = {s.get("source") for s in streams}
+    for i, s in enumerate(sources):
+        for j, tool in enumerate(s.get("tools") or []):
+            via = tool.get("via")
+            if via is not None and via not in stream_sources:
+                errors.append(
+                    f"data_sources[{i}].tools[{j}].via: '{via}' is not the source of "
+                    f"any pipeline_layout.mixed_streams entry {sorted(stream_sources)}"
+                )
+    for i, stream in enumerate(streams):
+        if strategy == "by_category" and chosen:
+            for j, t in enumerate(stream.get("types") or []):
+                if not t.get("category") and not t.get("destination"):
+                    errors.append(
+                        f"pipeline_layout.mixed_streams[{i}].types[{j}] ({t.get('name')}): "
+                        "needs a category or destination, because data_model.strategy "
+                        "is by_category"
+                    )
         names = [t.get("name") for t in stream.get("types") or []]
         dupes = sorted({n for n in names if names.count(n) > 1})
         if dupes:

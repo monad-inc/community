@@ -42,23 +42,28 @@ data_sources:
   - category: firewall
     care: true
     tools:
-      - vendor: palo alto       # arrives through the syslog collector below
+      - vendor: palo alto
+        via: syslog collector   # arrives through the mixed stream below
 
 pipeline_layout:
   strategy: per_source
   unmatched: archive
   mixed_streams:
     - source: syslog collector
+      input_type: monad-syslog
       split: edges
       types:
         - name: firewall
-          match: "message starts with the PAN-OS CSV signature"
+          category: firewall
+          match: "msg starts with the PAN-OS CSV signature"
         - name: linux_auth
+          category: identity
           match: "app-name is sshd, sudo, su, or CRON"
 
 modifiers:
   - id: cold-storage-archive   # also send everything to cheap object storage
     config:
+      # role_arn: arn:aws:iam::<account-id>:role/<role-name>   # preferred; see the S3 docs
       bucket: acme-security-cold
       region: us-east-1
       retention_days: 365      # applied with a bucket lifecycle rule, outside Monad

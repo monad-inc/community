@@ -7,7 +7,11 @@ shorter retention and data can be replayed or queried later.
 
 ## Config (`modifiers[].config`)
 
-- `bucket`, `region`, optional `prefix` (for example `acme/cold/`).
+- `bucket`, `region`, and `prefix` (default `<env>/cold/`). One shared output
+  means records from every source land under the same date paths; if the user
+  needs to replay or query one source at a time, offer one archive output per
+  source with its own prefix (`<env>/cold/<source>/`) instead, and show the
+  extra outputs in the plan.
 - `format` (optional): `json` with `gzip` by default; `parquet` if the archive
   will be queried.
 - `retention_days` (optional): documentation for the user; applied with an S3
