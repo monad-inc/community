@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Monad Onboarding Intake",
+  "description": "A filled-in answer document that bootstraps a Monad environment. The core shape is generic; anything type-specific lives under an open `config` or `options` object owned by the relevant module, so adding an output type, input pattern, or modifier needs only a module, not a schema change. Never put credentials in this document.",
+  "type": "object",
+  "required": ["schema_version", "org_id", "environment_name", "outputs", "data_sources"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Bump only on breaking shape changes. Additive fields don't need a bump."
+    },
+    "org_id": {
+      "type": "string",
+      "description": "Monad organization ID, or a name the skill resolves with list_organizations."
+    },
+    "environment_name": {
+      "type": "string",
+      "description": "Naming prefix for created components, for example 'prod' or 'acme-poc'."
+    },
+    "outputs": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Destinations. Each item's `type` is a Monad output type; types listed in modules/outputs/_registry.yaml have a module documenting their `config` keys.",
+      "items": {
+        "type": "object",
+        "required": ["type"],
+        "additionalProperties": false,
+        "properties": {
+          "type": { "type": "string", "description": "Output connector type, for example 'splunk', 'elasticsearch', 's3'." },
+          "name": { "type": "string", "description": "Optional display name; defaults to '<env>-<type>'." },
+          "config": {
+            "type": "object",
+            "description": "Open by design. Non-secret settings for this output type, documented in its module and confirmed with get_output_type.",
+            "additionalProperties": true
+          }
+        }
+      }
+    },
+    "data_model": {
+      "type": "object",
+      "description": "Required when any output is index-based (see modules/outputs/_registry.yaml).",
+      "additionalProperties": false,
+      "properties": {
+        "strategy": {
+          "type": "string",
+          "enum": ["single", "per_source", "by_category"],
+          "description": "single = one index; per_source = one per input type; by_category = grouped by data category."
+        },
+        "options": {
+          "type": "object",
+          "description": "Open. Strategy extras such as `index_name_template` (see index-modeling.md).",
+          "additionalProperties": true
+        }
+      }
+    },
+    "data_sources": {
+      "type": "array",
+      "description": "What the user collects, by category. Vendor names may be fuzzy; the skill resolves them to input types.",
+      "items": {
+        "type": "object",
+        "required": ["category", "care"],
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "type": "string",
+            "description": "A category from data-source-catalog.md, for example 'identity', 'endpoint', 'network'."
+          },
+          "care": { "type": "boolean", "description": "Does the user collect this category?" },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["vendor"],
+              "additionalProperties": false,
+              "properties": {
+                "vendor": { "type": "string", "description": "Vendor or product, possibly fuzzy (for example 'crowdstrike')." },
+                "input_types": {
+                  "type": "array",
+                  "items": { "type": "string" },
+                  "description": "Resolved Monad input types. A vendor with several feeds lists the ones chosen (see modules/inputs/multi-feed-vendors.md). Filled by the skill when omitted."
+                },
+                "synthetic": { "type": "boolean", "description": "Build with use_synthetic_data first, where the input supports it. Default true for the first build." },
+                "config": {
+                  "type": "object",
+                  "description": "Open. Non-secret settings for the input, confirmed with get_input_type.",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "pipeline_layout": {
+      "type": "object",
+      "description": "How sources map to pipelines and how mixed streams are split (see data-organization.md).",
+      "additionalProperties": false,
+      "properties": {
+        "strategy": {
+          "type": "string",
+          "enum": ["per_source", "custom"],
+          "description": "per_source = one pipeline per input (default). custom = described in `notes`."
+        },
+        "unmatched": {
+          "type": "string",
+          "enum": ["archive", "drop"],
+          "description": "What happens to records no route matches. Default archive."
+        },
+        "mixed_streams": {
+          "type": "array",
+          "description": "Inputs that carry several data types and must be split.",
+          "items": {
+            "type": "object",
+            "required": ["source", "types"],
+            "additionalProperties": false,
+            "properties": {
+              "source": { "type": "string", "description": "The vendor or input that carries the mixed data." },
+              "split": {
+                "type": "string",
+                "enum": ["edges", "intake_pipeline"],
+                "description": "edges = conditional edges in one pipeline (default). intake_pipeline = an intake pipeline feeding one pipeline per type."
+              },
+              "types": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "required": ["name"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "name": { "type": "string", "description": "Data type name, for example 'firewall'." },
+                    "match": { "type": "string", "description": "How to recognize it, in words or as a field/pattern, for example \"app-name is sshd or sudo\"." },
+                    "destination": { "type": "string", "description": "Output name or type this data type goes to." }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "notes": { "type": "string", "description": "Free-text layout decisions, for `custom`." }
+      }
+    },
+    "modifiers": {
+      "type": "array",
+      "description": "Cross-cutting add-ons. Each `id` selects a module under modules/modifiers/.",
+      "items": {
+        "type": "object",
+        "required": ["id"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "description": "Modifier id, for example 'cold-storage-archive' or 'transform-reshape'." },
+          "config": {
+            "type": "object",
+            "description": "Open. Settings documented in modules/modifiers/<id>.md.",
+            "additionalProperties": true
+          }
+        }
+      }
+    }
+  }
+}

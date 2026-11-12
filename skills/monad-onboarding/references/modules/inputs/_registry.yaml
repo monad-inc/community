@@ -1,0 +1,28 @@
+# Input module registry.
+#
+# Most inputs need no module: list_input_types → get_input_type → settings vs.
+# secrets covers them. Register a module only when an input or vendor needs
+# opinionated handling.
+#
+# The decision tree (Phase 4) checks this after resolving a vendor. `match` is
+# a case-insensitive vendor name or input type ID; `*` is a wildcard.
+# To add one: a file in this folder (or an existing reference) + a row here.
+
+version: 1
+
+inputs:
+  # Any vendor whose search returns more than one input type.
+  - match: "*"
+    when: "list_input_types returns several types for the vendor"
+    label: Vendors with several feeds
+    file: multi-feed-vendors.md
+
+  # Collectors that carry several data types through one input: plan the
+  # split with the pipeline layout patterns.
+  - match: monad-syslog
+    label: Syslog collector
+    file: ../../data-organization.md
+
+  - match: monad-http
+    label: HTTP collector
+    file: ../../data-organization.md

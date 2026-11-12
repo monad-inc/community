@@ -13,9 +13,11 @@ agent product.
 | [`ocsf-transform-builder`](ocsf-transform-builder/) | Build, validate, and audit jq transforms that map vendor records to OCSF events | [community-transformations](https://github.com/monad-inc/community-transformations) `ocsf/` | `jq`, `yq` v4, `curl`, `git` |
 | [`ecs-transform-builder`](ecs-transform-builder/) | Build and validate jq transforms that map vendor records to Elastic Common Schema (ECS) documents | community-transformations `ecs/` | `jq`, `yq` v4, `curl`, `git` |
 | [`cef-transform-builder`](cef-transform-builder/) | Build and validate jq transforms that map vendor records to CEF (ArcSight) messages | community-transformations `cef/` | `jq`, `yq` v4, `git` |
+| [`monad-onboarding`](monad-onboarding/) | Guided onboarding: choose destinations, organize indexes and pipelines, and build a working Monad environment with placeholder secrets, one verified pipeline at a time | Your Monad organization | [Monad MCP server](https://app.monad.com/docs/mcp/index); `python3`, `yq` v4 for the helper scripts |
 
-All three can optionally use the [Monad MCP server](https://app.monad.com/docs/mcp/index)
+The transform builders can optionally use the [Monad MCP server](https://app.monad.com/docs/mcp/index)
 to pull live sample records and test a transform in a real pipeline.
+`monad-onboarding` requires it: the MCP server is how it builds.
 
 ## Using a skill
 
